@@ -1,0 +1,1387 @@
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:gap/gap.dart';
+import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:audioplayers/audioplayers.dart';
+import 'notes_controller.dart';
+import 'folders_controller.dart';
+import 'quiz_screen.dart';
+import 'flashcards_study_screen.dart';
+import 'ai_chat_screen.dart';
+import '../../core/theme/app_theme.dart';
+import '../../data/mock_notes.dart';
+import '../../data/note.dart';
+import '../../core/utils/extensions.dart';
+import '../../core/utils/toast_utils.dart';
+
+class NotesEditorScreen extends ConsumerStatefulWidget {
+  const NotesEditorScreen({super.key, required this.noteId});
+
+  final String noteId;
+
+  @override
+  ConsumerState<NotesEditorScreen> createState() => _NotesEditorScreenState();
+}
+
+class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
+  int _selectedTab = 0; // 0 for Note, 1 for Transcript
+  bool _isEditing = false;
+  late TextEditingController _contentController;
+  late TextEditingController _transcriptController;
+  late AudioPlayer _audioPlayer;
+  bool _isPlaying = false;
+  Duration _duration = Duration.zero;
+  Duration _position = Duration.zero;
+  double _playbackSpeed = 1.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _contentController = TextEditingController();
+    _transcriptController = TextEditingController();
+    _audioPlayer = AudioPlayer();
+
+    _audioPlayer.onDurationChanged.listen((d) => setState(() => _duration = d));
+    _audioPlayer.onPositionChanged.listen((p) => setState(() => _position = p));
+    _audioPlayer.onPlayerStateChanged.listen((s) {
+      if (mounted) setState(() => _isPlaying = s == PlayerState.playing);
+    });
+  }
+
+  @override
+  void dispose() {
+    _contentController.dispose();
+    _transcriptController.dispose();
+    _audioPlayer.dispose();
+    super.dispose();
+  }
+
+  void _togglePlayback(Note note) async {
+    try {
+      if (_isPlaying) {
+        await _audioPlayer.pause();
+      } else {
+        if (note.audioPath != null && File(note.audioPath!).existsSync()) {
+          await _audioPlayer.play(DeviceFileSource(note.audioPath!));
+        } else {
+          await _audioPlayer.play(AssetSource('audio/sample.mp3'));
+        }
+      }
+    } catch (e) {
+      debugPrint('Playback error: $e');
+      ToastUtils.showError(context, 'Audio file not found or corrupted.');
+    }
+  }
+
+  void _showQuiz() {
+    final List<Map<String, dynamic>> questions = [
+      {
+        'question': 'What is the primary topic of this note?',
+        'options': ['Audio Analysis', 'Project Management', 'Market Research', 'Daily Sync'],
+        'correctIndex': 0,
+      },
+      {
+        'question': 'Which frequency was identified as the broadband noise source?',
+        'options': ['50Hz', '60Hz', '440Hz', '1000Hz'],
+        'correctIndex': 1,
+      },
+      {
+        'question': 'What was the recommended gain for speech clarity?',
+        'options': ['3dB', '6dB', '10dB', '12dB'],
+        'correctIndex': 1,
+      },
+    ];
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => QuizScreen(
+          title: 'Note Analysis',
+          questions: questions,
+        ),
+      ),
+    );
+  }
+
+  void _handleAITool(String tool) {
+    Navigator.pop(context); // Close sheet
+    if (tool == 'Chat') {
+      final note = ref.read(notesControllerProvider).asData?.value.firstWhereOrNull((n) => n.id == widget.noteId) ??
+          MockNotes.list.firstWhereOrNull((n) => n.id == widget.noteId);
+      if (note != null) {
+        Navigator.push(context, MaterialPageRoute(builder: (context) => AIChatScreen(note: note)));
+      }
+      return;
+    }
+    _showAIProcessingDialog(tool);
+  }
+
+  void _showAIProcessingDialog(String toolLabel) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => _AIProcessingDialog(toolLabel: toolLabel),
+    ).then((result) {
+      if (result != null) {
+        if (toolLabel.contains('Quiz')) {
+          _showQuiz();
+        } else {
+          ToastUtils.showSuccess(context, '$toolLabel Completed!');
+        }
+      }
+    });
+  }
+
+  void _seekRelative(int seconds) {
+    final newPos = _position + Duration(seconds: seconds);
+    _audioPlayer.seek(newPos);
+  }
+
+  void _cycleSpeed() {
+    setState(() {
+      if (_playbackSpeed == 1.0) _playbackSpeed = 1.5;
+      else if (_playbackSpeed == 1.5) _playbackSpeed = 2.0;
+      else _playbackSpeed = 1.0;
+    });
+    _audioPlayer.setPlaybackRate(_playbackSpeed);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final notesAsync = ref.watch(notesControllerProvider);
+    final notes = notesAsync.asData?.value ?? const [];
+    final note = notes.firstWhereOrNull((n) => n.id == widget.noteId) ??
+        MockNotes.list.firstWhereOrNull((n) => n.id == widget.noteId);
+
+    if (note == null) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Scaffold(
+      backgroundColor: isDark ? AppTheme.darkBackground : AppTheme.lightBackground,
+      appBar: AppBar(
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back_ios_new, size: 20, color: isDark ? Colors.white : Colors.black87),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          'Note Detail',
+          style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+        ),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.more_horiz, color: isDark ? Colors.white : Colors.black87),
+            onPressed: () => _showOptionsMenu(context, note),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              children: [
+                const Gap(16),
+                _AudioPlayerCard(
+                  isPlaying: _isPlaying,
+                  duration: _duration,
+                  position: _position,
+                  speed: _playbackSpeed,
+                  onTogglePlay: () => _togglePlayback(note),
+                  onSeekRelative: _seekRelative,
+                  onSpeedToggle: _cycleSpeed,
+                ),
+                const Gap(24),
+                _NoteToolsHeader(
+                  note: note,
+                  isEditing: _isEditing,
+                  selectedTab: _selectedTab,
+                  onNoteTools: () => _showNoteTools(context),
+                  onEditToggle: () {
+                    if (_isEditing) {
+                      // Save changes
+                      ref.read(notesControllerProvider.notifier).upsert(
+                        id: note.id,
+                        title: note.title,
+                        content: _contentController.text,
+                        transcript: _transcriptController.text,
+                      );
+                      ToastUtils.showSuccess(context, 'Changes saved successfully');
+                    } else {
+                      _contentController.text = note.content;
+                      _transcriptController.text = note.transcript;
+                    }
+                    setState(() => _isEditing = !_isEditing);
+                  },
+                ),
+                const Gap(24),
+                if (_selectedTab == 0) 
+                  _isEditing 
+                    ? TextField(
+                        controller: _contentController,
+                        maxLines: null,
+                        style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                        decoration: const InputDecoration(border: InputBorder.none),
+                      )
+                    : _StructuredNoteContent(note: note)
+                else
+                  _TranscriptContent(
+                    note: note, 
+                    isEditing: _isEditing,
+                    controller: _transcriptController,
+                  ),
+                const Gap(80), // Space for bottom toggle
+              ],
+            ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: _BottomToggleBar(
+        selectedTab: _selectedTab,
+        onTabChanged: (index) => setState(() => _selectedTab = index),
+      ),
+    );
+  }
+
+  void _showNoteTools(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Theme.of(context).brightness == Brightness.dark ? AppTheme.darkSurface : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('AI Note Tools', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Gap(16),
+            _ToolOption(
+              icon: Icons.chat_bubble_outline,
+              label: 'Chat with Note',
+              onTap: () => _handleAITool('Chat')
+            ),
+            _ToolOption(
+              icon: Icons.auto_awesome_outlined,
+              label: 'Regenerate Summary',
+              onTap: () => _handleAITool('Regenerate Summary')
+            ),
+          _ToolOption(
+            icon: Icons.quiz_outlined,
+            label: 'Generate Quiz',
+            onTap: () => _handleAITool('Generate Quiz')
+          ),
+          _ToolOption(
+            icon: Icons.translate_outlined,
+            label: 'Translate Note',
+            onTap: () => _handleAITool('Translate Note')
+          ),
+          _ToolOption(
+            icon: Icons.lightbulb_outline,
+            label: 'Identify Blind Spots',
+            onTap: () => _handleAITool('Identify Blind Spots')
+          ),
+            const Gap(24),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showOptionsMenu(BuildContext context, Note note) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppTheme.borderRadiusMedium)),
+      ),
+      builder: (context) => _OptionsMenuSheet(note: note),
+    );
+  }
+}
+
+class _AudioPlayerCard extends StatelessWidget {
+  const _AudioPlayerCard({
+    required this.isPlaying,
+    required this.duration,
+    required this.position,
+    required this.speed,
+    required this.onTogglePlay,
+    required this.onSeekRelative,
+    required this.onSpeedToggle,
+  });
+
+  final bool isPlaying;
+  final Duration duration;
+  final Duration position;
+  final double speed;
+  final VoidCallback onTogglePlay;
+  final Function(int) onSeekRelative;
+  final VoidCallback onSpeedToggle;
+
+  String _formatDuration(Duration d) {
+    final minutes = d.inMinutes;
+    final seconds = d.inSeconds % 60;
+    return '$minutes:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: isDark ? AppTheme.darkSurface : Colors.white,
+        borderRadius: BorderRadius.circular(AppTheme.borderRadiusMedium),
+        border: Border.all(color: isDark ? Colors.white12 : Colors.black.withOpacity(0.05)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(isDark ? 0.2 : 0.02),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Text(_formatDuration(position), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: isDark ? Colors.white : Colors.black)),
+              const Gap(12),
+              Expanded(child: _WaveformSlider(position: position, duration: duration)),
+              const Gap(12),
+              Text(_formatDuration(duration), style: TextStyle(fontSize: 12, color: Colors.grey)),
+            ],
+          ),
+          const Gap(24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _PlayerIconBtn(icon: Icons.download_outlined, onTap: () {}),
+              _PlayerIconBtn(icon: Icons.replay_10, onTap: () => onSeekRelative(-10)),
+              _PlayBtn(isPlaying: isPlaying, onTap: onTogglePlay),
+              _PlayerIconBtn(icon: Icons.forward_10, onTap: () => onSeekRelative(10)),
+              _PlayerSpeedBtn(speed: speed, onTap: onSpeedToggle),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WaveformSlider extends StatelessWidget {
+  const _WaveformSlider({required this.position, required this.duration});
+  final Duration position;
+  final Duration duration;
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = duration.inSeconds > 0 ? position.inSeconds / duration.inSeconds : 0.0;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    return SizedBox(
+      height: 40,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: List.generate(30, (index) {
+          final barProgress = index / 30;
+          final isPlayed = barProgress <= progress;
+          final height = (index % 5 + 2) * 4.0;
+          return Container(
+            width: 2,
+            height: height,
+            decoration: BoxDecoration(
+              color: isPlayed ? (isDark ? Colors.white : Colors.black) : (isDark ? Colors.white24 : Colors.grey[300]),
+              borderRadius: BorderRadius.circular(1),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+}
+
+class _PlayerIconBtn extends StatelessWidget {
+  const _PlayerIconBtn({required this.icon, required this.onTap});
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white10 : Colors.grey[100],
+        shape: BoxShape.circle,
+      ),
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: Icon(icon, size: 20, color: isDark ? Colors.white : Colors.black87),
+      ),
+    );
+  }
+}
+
+class _PlayBtn extends StatelessWidget {
+  const _PlayBtn({required this.isPlaying, required this.onTap});
+  final bool isPlaying;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      width: 60,
+      height: 60,
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white : Colors.black,
+        shape: BoxShape.circle,
+      ),
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: Icon(isPlaying ? Icons.pause : Icons.play_arrow, size: 32, color: isDark ? Colors.black : Colors.white),
+      ),
+    );
+  }
+}
+
+class _PlayerSpeedBtn extends StatelessWidget {
+  const _PlayerSpeedBtn({required this.speed, required this.onTap});
+  final double speed;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white10 : Colors.grey[100],
+        shape: BoxShape.circle,
+      ),
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: Center(
+          child: Text(
+            '${speed.toString().replaceAll('.0', '')}x',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: isDark ? Colors.white : Colors.black),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NoteToolsHeader extends StatelessWidget {
+  const _NoteToolsHeader({
+    required this.note,
+    required this.isEditing,
+    required this.selectedTab,
+    required this.onNoteTools,
+    required this.onEditToggle,
+  });
+  final Note note;
+  final bool isEditing;
+  final int selectedTab;
+  final VoidCallback onNoteTools;
+  final VoidCallback onEditToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final typeLabel = selectedTab == 0 ? 'Note' : 'Transcript';
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _ToolBtn(
+                label: '$typeLabel Tools',
+                icon: Icons.auto_awesome_outlined,
+                color: isDark ? Colors.white : Colors.black,
+                textColor: isDark ? Colors.black : Colors.white,
+                onTap: onNoteTools,
+              ),
+            ),
+            const Gap(12),
+            Expanded(
+              child: _ToolBtn(
+                label: isEditing ? 'Save $typeLabel' : 'Edit $typeLabel',
+                icon: isEditing ? Icons.check : Icons.edit_outlined,
+                color: isDark ? AppTheme.darkCard : Colors.white,
+                textColor: isDark ? Colors.white : Colors.black,
+                hasBorder: true,
+                onTap: onEditToggle,
+              ),
+            ),
+          ],
+        ),
+        const Gap(24),
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.white10 : Colors.grey[100],
+                shape: BoxShape.circle,
+              ),
+              child: const Text('🪖', style: TextStyle(fontSize: 20)),
+            ),
+            const Gap(16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    note.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: isDark ? Colors.white : Colors.black),
+                  ),
+                  const Gap(4),
+                  Text(
+                    'Last Modified: ${DateFormat('MM-dd-yyyy - HH:mm').format(note.updatedAt)}',
+                    style: const TextStyle(color: Colors.grey, fontSize: 13),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _ToolBtn extends StatelessWidget {
+  const _ToolBtn({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.textColor,
+    required this.onTap,
+    this.hasBorder = false,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color color;
+  final Color textColor;
+  final bool hasBorder;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(24),
+      child: Container(
+        height: 48,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(24),
+          border: hasBorder ? Border.all(color: Colors.grey.withOpacity(0.3)) : null,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 18, color: textColor),
+            const Gap(8),
+            Text(
+              label,
+              style: TextStyle(fontWeight: FontWeight.w600, color: textColor, fontSize: 13),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StructuredNoteContent extends StatelessWidget {
+  const _StructuredNoteContent({required this.note});
+  final Note note;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final headingStyle = TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: isDark ? Colors.white : Colors.black);
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Overview & Summary', style: headingStyle),
+        const Gap(16),
+        Text(
+          note.summary,
+          style: TextStyle(fontSize: 16, color: isDark ? Colors.white : AppTheme.darkBackground.withOpacity(0.8), height: 1.5),
+        ),
+        const Gap(40),
+        if (note.actionItems.isNotEmpty) ...[
+          _ActionItemsSection(noteId: note.id, actionItems: note.actionItems),
+          const Gap(40),
+        ],
+        Text('Key Concepts & Definitions', style: headingStyle),
+        const Gap(16),
+        ...note.keyConcepts.map((concept) => Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: CircleAvatar(radius: 3, backgroundColor: isDark ? Colors.white : Colors.black),
+                  ),
+                  const Gap(12),
+                  Expanded(
+                    child: RichText(
+                      text: TextSpan(
+                        style: TextStyle(fontSize: 16, color: isDark ? Colors.white : Colors.black87, height: 1.5),
+                        children: [
+                          TextSpan(
+                            text: '${concept['title']} ',
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          TextSpan(text: concept['description']),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )),
+        const Gap(40),
+        Text('Common Questions Addressed', style: headingStyle),
+        const Gap(16),
+        _QuestionsTable(questions: note.commonQuestions),
+        const Gap(40),
+        if (note.flashcards.isNotEmpty) ...[
+          _FlashcardsSection(flashcards: note.flashcards),
+          const Gap(40),
+        ],
+        Text('Final Thoughts', style: headingStyle),
+        const Gap(16),
+        ...note.finalThoughts.map((thought) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: CircleAvatar(radius: 3, backgroundColor: isDark ? Colors.white : Colors.black),
+                  ),
+                  const Gap(12),
+                  Expanded(child: Text(thought, style: TextStyle(fontSize: 16, height: 1.5, color: isDark ? Colors.white : Colors.black))),
+                ],
+              ),
+            )),
+      ],
+    );
+  }
+}
+
+class _QuestionsTable extends StatelessWidget {
+  const _QuestionsTable({required this.questions});
+  final List<Map<String, dynamic>> questions;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Table(
+      border: TableBorder.all(color: isDark ? Colors.white12 : Colors.grey.withOpacity(0.3)),
+      children: [
+        TableRow(
+          decoration: BoxDecoration(color: isDark ? Colors.white10 : Colors.grey[50]),
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text('Question', style: TextStyle(fontWeight: FontWeight.w700, color: isDark ? Colors.white : Colors.black)),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text('Explanation', style: TextStyle(fontWeight: FontWeight.w700, color: isDark ? Colors.white : Colors.black)),
+            ),
+          ],
+        ),
+        ...questions.map((q) => TableRow(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Text(q['question'] ?? '', style: TextStyle(color: isDark ? Colors.white70 : Colors.black87)),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Text(q['explanation'] ?? '', style: TextStyle(color: isDark ? Colors.white70 : Colors.black87)),
+                ),
+              ],
+            )),
+      ],
+    );
+  }
+}
+
+class _TranscriptContent extends StatelessWidget {
+  const _TranscriptContent({
+    required this.note,
+    this.isEditing = false,
+    this.controller,
+  });
+  final Note note;
+  final bool isEditing;
+  final TextEditingController? controller;
+
+  @override
+  Widget build(BuildContext context) {
+    if (isEditing && controller != null) {
+      return TextField(
+        controller: controller,
+        maxLines: null,
+        style: const TextStyle(fontSize: 16, height: 1.6),
+        decoration: const InputDecoration(
+          border: InputBorder.none,
+          hintText: 'Edit transcript...',
+        ),
+      );
+    }
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.list, size: 16, color: Colors.grey),
+                Gap(8),
+                Text('21 Words', style: TextStyle(color: Colors.grey, fontSize: 13)),
+              ],
+            ),
+            _ToolBtnSmall(label: 'Edit', icon: Icons.edit, onTap: () {}),
+          ],
+        ),
+        const Gap(16),
+        Text(
+          note.content.isEmpty ? 'Empty transcript...' : note.content,
+          style: TextStyle(fontSize: 16, height: 1.6, color: isDark ? Colors.white : Colors.black87),
+        ),
+      ],
+    );
+  }
+}
+
+class _ToolBtnSmall extends StatelessWidget {
+  const _ToolBtnSmall({required this.label, required this.icon, required this.onTap});
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white10 : Colors.transparent,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: isDark ? Colors.white12 : Colors.grey.withOpacity(0.2)),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Row(
+          children: [
+            Icon(icon, size: 14, color: isDark ? Colors.white : Colors.black),
+            const Gap(8),
+            Text(label, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: isDark ? Colors.white : Colors.black)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BottomToggleBar extends StatelessWidget {
+  const _BottomToggleBar({required this.selectedTab, required this.onTabChanged});
+  final int selectedTab;
+  final ValueChanged<int> onTabChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(context).padding.bottom + 16),
+      decoration: BoxDecoration(
+        color: isDark ? AppTheme.darkBackground : Colors.white,
+        border: isDark ? const Border(top: BorderSide(color: Colors.white10)) : null,
+        boxShadow: isDark ? null : [
+          const BoxShadow(color: Colors.black12, blurRadius: 20, offset: Offset(0, -5)),
+        ],
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[100],
+          borderRadius: BorderRadius.circular(32),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: _ToggleButton(
+                label: 'Note',
+                icon: Icons.description_outlined,
+                isSelected: selectedTab == 0,
+                onTap: () => onTabChanged(0),
+              ),
+            ),
+            Expanded(
+              child: _ToggleButton(
+                label: 'Transcript',
+                icon: Icons.mic_none,
+                isSelected: selectedTab == 1,
+                onTap: () => onTabChanged(1),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ToggleButton extends StatelessWidget {
+  const _ToggleButton({
+    required this.label,
+    required this.icon,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected ? (isDark ? Colors.white : Colors.black) : Colors.transparent,
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon, 
+              size: 20, 
+              color: isSelected ? (isDark ? Colors.black : Colors.white) : Colors.grey
+            ),
+            const Gap(8),
+            Text(
+              label,
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: isSelected ? (isDark ? Colors.black : Colors.white) : Colors.grey,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MoveToFolderSheet extends ConsumerWidget {
+  const _MoveToFolderSheet({required this.note});
+  final Note note;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final foldersAsync = ref.watch(foldersControllerProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: isDark ? AppTheme.darkSurface : Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Move to Folder',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const Gap(16),
+          foldersAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (err, stack) => Text('Error: $err'),
+            data: (folders) {
+              return ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.4),
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.not_interested),
+                      title: const Text('No Folder'),
+                      trailing: note.folderId == null ? const Icon(Icons.check, color: Colors.blue) : null,
+                      onTap: () {
+                        ref.read(notesControllerProvider.notifier).moveToFolder(note.id, null);
+                        Navigator.pop(context);
+                        ToastUtils.showSuccess(context, 'Note removed from folder');
+                      },
+                    ),
+                    ...folders.map((folder) => ListTile(
+                          leading: Icon(IconData(folder.iconCode, fontFamily: 'MaterialIcons'), color: Color(folder.colorValue)),
+                          title: Text(folder.name),
+                          trailing: note.folderId == folder.id ? const Icon(Icons.check, color: Colors.blue) : null,
+                          onTap: () {
+                            ref.read(notesControllerProvider.notifier).moveToFolder(note.id, folder.id);
+                            Navigator.pop(context);
+                            ToastUtils.showSuccess(context, 'Note moved to ${folder.name}');
+                          },
+                        )),
+                  ],
+                ),
+              );
+            },
+          ),
+          const Gap(24),
+        ],
+      ),
+    );
+  }
+}
+
+class _OptionsMenuSheet extends ConsumerWidget {
+  const _OptionsMenuSheet({required this.note});
+  final Note note;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: isDark ? AppTheme.darkSurface : Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const Gap(24),
+          _MenuOption(
+            icon: Icons.ios_share, 
+            label: 'Share Note', 
+            onTap: () {
+              Navigator.pop(context);
+              final box = context.findRenderObject() as RenderBox?;
+              Share.share(
+                '${note.title}\n\n${note.summary}',
+                sharePositionOrigin: box != null ? box.localToGlobal(Offset.zero) & box.size : null,
+              );
+            }
+          ),
+          const Gap(16),
+          _MenuOption(
+            icon: Icons.file_copy_outlined, 
+            label: 'Share Transcript', 
+            onTap: () {
+              Navigator.pop(context);
+              final box = context.findRenderObject() as RenderBox?;
+              Share.share(
+                note.content,
+                sharePositionOrigin: box != null ? box.localToGlobal(Offset.zero) & box.size : null,
+              );
+            }
+          ),
+          const Gap(16),
+          _MenuOption(
+            icon: Icons.drive_file_move_outlined, 
+            label: 'Move to Folder', 
+            onTap: () {
+              Navigator.pop(context);
+              showModalBottomSheet(
+                context: context,
+                backgroundColor: Colors.transparent,
+                builder: (context) => _MoveToFolderSheet(note: note),
+              );
+            }
+          ),
+          const Gap(16),
+          _MenuOption(
+            icon: Icons.delete_outline,
+            label: 'Delete',
+            color: Colors.red,
+            onTap: () {
+              Navigator.pop(context);
+              ref.read(notesControllerProvider.notifier).deleteNote(note.id);
+              Navigator.pop(context);
+            },
+          ),
+          const Gap(24),
+        ],
+      ),
+    );
+  }
+}
+
+class _MenuOption extends StatelessWidget {
+  const _MenuOption({
+    required this.icon,
+    required this.label,
+    this.color,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color? color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final effectiveColor = color ?? (isDark ? Colors.white : Colors.black87);
+    return InkWell(
+      onTap: onTap,
+      child: Row(
+        children: [
+          Icon(icon, color: effectiveColor),
+          const Gap(16),
+          Text(label, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: effectiveColor)),
+        ],
+      ),
+    );
+  }
+}
+
+class _ToolOption extends StatelessWidget {
+  const _ToolOption({required this.icon, required this.label, required this.onTap});
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return ListTile(
+      leading: Icon(icon, color: isDark ? Colors.white : Colors.black87),
+      title: Text(label, style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
+      onTap: onTap,
+    );
+  }
+}
+class _AIProcessingDialog extends StatefulWidget {
+  const _AIProcessingDialog({required this.toolLabel});
+  final String toolLabel;
+
+  @override
+  State<_AIProcessingDialog> createState() => _AIProcessingDialogState();
+}
+
+class _AIProcessingDialogState extends State<_AIProcessingDialog> {
+  double _progress = 0.0;
+  String _status = 'Initializing AI...';
+
+  @override
+  void initState() {
+    super.initState();
+    _startSimulation();
+  }
+
+  void _startSimulation() async {
+    await Future.delayed(const Duration(milliseconds: 800));
+    if (!mounted) return;
+    setState(() { _progress = 0.3; _status = 'Analyzing context...'; });
+    
+    await Future.delayed(const Duration(milliseconds: 1200));
+    if (!mounted) return;
+    setState(() { _progress = 0.7; _status = 'Generating output...'; });
+    
+    await Future.delayed(const Duration(seconds: 1));
+    if (!mounted) return;
+    setState(() { _progress = 1.0; _status = 'Finalizing...'; });
+    
+    await Future.delayed(const Duration(milliseconds: 500));
+    if (mounted) Navigator.pop(context, true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: isDark ? AppTheme.darkSurface : Colors.white,
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.auto_awesome, color: Colors.blue, size: 48),
+            const Gap(24),
+            Text(
+              widget.toolLabel,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const Gap(8),
+            Text(
+              _status,
+              style: TextStyle(color: Colors.grey[500], fontSize: 13),
+            ),
+            const Gap(24),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: _progress,
+                backgroundColor: Colors.blue.withOpacity(0.1),
+                valueColor: const AlwaysStoppedAnimation(Colors.blue),
+                minHeight: 8,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ActionItemsSection extends ConsumerWidget {
+  const _ActionItemsSection({required this.noteId, required this.actionItems});
+  final String noteId;
+  final List<Map<String, dynamic>> actionItems;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final headingStyle = TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black, letterSpacing: -0.5);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Action Items', style: headingStyle),
+        const Gap(16),
+        ...actionItems.asMap().entries.map((entry) {
+          final index = entry.key;
+          final item = entry.value;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: InkWell(
+              onTap: () {
+                ref.read(notesControllerProvider.notifier).toggleActionItem(noteId, index);
+              },
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.white.withOpacity(0.05) : Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      item['isCompleted'] == true ? Icons.check_circle : Icons.circle_outlined,
+                      color: item['isCompleted'] == true ? Colors.green : Colors.grey,
+                      size: 20,
+                    ),
+                    const Gap(16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item['task'] ?? '',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500,
+                              color: isDark ? Colors.white : Colors.black,
+                              decoration: item['isCompleted'] == true ? TextDecoration.lineThrough : null,
+                            ),
+                          ),
+                          if (item['owner'] != null && (item['owner'] as String).isNotEmpty)
+                            Text(
+                              'Owner: ${item['owner']}',
+                              style: TextStyle(fontSize: 12, color: Colors.blue.withOpacity(0.8)),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+}
+
+class _FlashcardsSection extends StatelessWidget {
+  const _FlashcardsSection({required this.flashcards});
+  final List<Map<String, dynamic>> flashcards;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final headingStyle = TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black, letterSpacing: -0.5);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('Flashcards', style: headingStyle),
+            TextButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => FlashcardsStudyScreen(flashcards: flashcards)),
+                );
+              },
+              icon: const Icon(Icons.style_outlined, size: 18),
+              label: const Text('Study Mode'),
+              style: TextButton.styleFrom(foregroundColor: Colors.blue),
+            ),
+          ],
+        ),
+        const Gap(16),
+        SizedBox(
+          height: 180,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: flashcards.length,
+            separatorBuilder: (context, index) => const Gap(16),
+            itemBuilder: (context, index) {
+              return _FlashcardItem(card: flashcards[index]);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FlashcardItem extends StatefulWidget {
+  const _FlashcardItem({required this.card});
+  final Map<String, dynamic> card;
+
+  @override
+  State<_FlashcardItem> createState() => _FlashcardItemState();
+}
+
+class _FlashcardItemState extends State<_FlashcardItem> {
+  bool _isFlipped = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return GestureDetector(
+      onTap: () => setState(() => _isFlipped = !_isFlipped),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+        width: 260,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: _isFlipped 
+              ? (isDark 
+                  ? [Colors.purple.withOpacity(0.3), Colors.blue.withOpacity(0.3)] 
+                  : [Colors.purple.withOpacity(0.1), Colors.blue.withOpacity(0.1)])
+              : (isDark 
+                  ? [Colors.blue.withOpacity(0.2), Colors.purple.withOpacity(0.2)] 
+                  : [Colors.blue.withOpacity(0.05), Colors.purple.withOpacity(0.05)]),
+          ),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.blue.withOpacity(0.3), width: _isFlipped ? 2 : 1),
+          boxShadow: [
+            if (_isFlipped)
+              BoxShadow(
+                color: Colors.blue.withOpacity(0.2),
+                blurRadius: 10,
+                spreadRadius: 2,
+              ),
+          ],
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              _isFlipped ? 'DEFINITION' : 'TERM',
+              style: TextStyle(
+                fontSize: 10, 
+                fontWeight: FontWeight.w800, 
+                color: Colors.blue.withOpacity(0.8),
+                letterSpacing: 2,
+              ),
+            ),
+            const Gap(12),
+            Expanded(
+              child: Center(
+                child: SingleChildScrollView(
+                  child: Text(
+                    _isFlipped ? (widget.card['back'] ?? '') : (widget.card['front'] ?? ''),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 18, 
+                      fontWeight: FontWeight.bold, 
+                      color: isDark ? Colors.white : Colors.black,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const Gap(12),
+            Text(
+              'Tap to flip',
+              style: TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w500),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
