@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 final authServiceProvider = Provider((ref) => AuthService());
 
@@ -13,7 +14,8 @@ class AuthService {
     scopes: ['email', 'profile', 'openid'],
   );
 
-  static const String _baseUrl = 'http://localhost:3001/v1';
+  final String _baseUrl = dotenv.get('API_BASE_URL');
+
 
   Future<String> getDeviceId() async {
     final deviceInfo = DeviceInfoPlugin();
@@ -35,12 +37,16 @@ class AuthService {
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
       final deviceId = await getDeviceId();
 
-      // Exchange Google token for backend JWT
-      final response = await http.get(
-        Uri.parse('$_baseUrl/auth/google/callback?deviceId=$deviceId'),
+      // Exchange Google ID Token for backend JWT
+      final response = await http.post(
+        Uri.parse('$_baseUrl/auth/google/verify'),
         headers: {
-          'Authorization': 'Bearer ${googleAuth.accessToken}',
+          'Content-Type': 'application/json',
         },
+        body: jsonEncode({
+          'token': googleAuth.idToken,
+          'deviceId': deviceId,
+        }),
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
@@ -74,8 +80,23 @@ class AuthService {
     await prefs.remove('user_data');
   }
 
+  Future<Map<String, dynamic>?> getUser() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userData = prefs.getString('user_data');
+    if (userData != null) {
+      return jsonDecode(userData);
+    }
+    return null;
+  }
+
+  Future<bool> isPro() async {
+    final user = await getUser();
+    return user != null && user['plan'] == 'Pro';
+  }
+
   Future<bool> isAuthenticated() async {
     final token = await getToken();
     return token != null;
   }
 }
+

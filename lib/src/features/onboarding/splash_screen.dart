@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'onboarding_screen.dart';
+import '../notes/notes_list_screen.dart';
 
 class SplashScreen extends StatefulWidget {
+
   const SplashScreen({super.key});
 
   @override
@@ -38,8 +39,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     await Future.delayed(const Duration(seconds: 3));
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+      MaterialPageRoute(builder: (_) => const NotesListScreen()),
     );
+
   }
 
   @override

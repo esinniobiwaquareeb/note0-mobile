@@ -10,7 +10,8 @@ import 'notes_controller.dart';
 import 'notes_editor_screen.dart';
 import 'settings_screen.dart';
 import 'audio_recording_screen.dart';
-import 'pro_screen.dart';
+import '../pro/pro_screen.dart';
+
 import 'youtube_processing_dialog.dart';
 import 'folders_controller.dart';
 import 'folder_details_screen.dart';
@@ -157,7 +158,8 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
                     ? Builder(
                         builder: (context) {
                           final notes = notesAsync.asData?.value ?? [];
-                          var displayNotes = [...MockNotes.list, ...notes];
+                          var displayNotes = [...notes];
+
 
                           if (_searchQuery.isNotEmpty) {
                             displayNotes = displayNotes.where((note) {
@@ -321,16 +323,15 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
     final usageService = ref.read(usageServiceProvider);
     final authService = ref.read(authServiceProvider);
 
-    final isAuthed = await authService.isAuthenticated();
+    final isPro = await authService.isPro();
 
-    if (!isAuthed) {
-      final canRecord = await usageService.canRecord(false);
-      if (!canRecord) {
-        if (mounted) {
-          _showLimitReachedDialog(context);
-        }
-        return;
+    final canRecord = await usageService.canRecord(isPro);
+
+    if (!canRecord) {
+      if (mounted) {
+        _showLimitReachedDialog(context);
       }
+      return;
     }
 
     if (!mounted) return;
@@ -340,9 +341,10 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
     );
 
     if (path != null) {
-      if (!isAuthed) {
+      if (!isPro) {
         await usageService.incrementRecordingCount();
       }
+
 
       _showSuccess('Recording completed. Analyzing...');
 
@@ -372,68 +374,84 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
+        backgroundColor: Theme.of(context).cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Column(
           children: [
-            Icon(Icons.lock_outline, color: Colors.blue),
-            Gap(12),
-            Text('Limit Reached'),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.auto_awesome, color: Colors.blue, size: 32),
+            ),
+            const Gap(16),
+            const Text(
+              'Limit Reached',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 22),
+            ),
           ],
         ),
         content: const Text(
-          'You have reached the limit for free audio recordings. Please sign in or upgrade to Pro to continue transcribing your thoughts.',
-          style: TextStyle(fontSize: 15, height: 1.5),
+          'You\'ve experienced Note0\'s industrial transcription! To save permanently or record more, please sign in or upgrade to Pro.',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 16, height: 1.5, color: Colors.grey),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'Maybe Later',
-              style: TextStyle(color: Colors.grey),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              final authService = ref.read(authServiceProvider);
-              final result = await authService.signInWithGoogle();
-              if (result != null && mounted) {
-                _showSuccess('Successfully signed in with Google!');
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+          Column(
+            children: [
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () async {
+                    Navigator.pop(context);
+                    final authService = ref.read(authServiceProvider);
+                    final result = await authService.signInWithGoogle();
+                    if (result != null && mounted) {
+                      _showSuccess('Welcome to Note0!');
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('Sign in with Google', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
               ),
-            ),
-            child: const Text('Sign in with Google'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ProScreen()),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.black,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+              const Gap(12),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const ProScreen()),
+                    );
+                  },
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    foregroundColor: Theme.of(context).primaryColor,
+                  ),
+                  child: const Text('Upgrade for Unlimited Notes', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
               ),
-            ),
-            child: const Text('Go Pro'),
+              const Gap(8),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Maybe Later', style: TextStyle(color: Colors.grey)),
+              ),
+            ],
           ),
         ],
-        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        actionsAlignment: MainAxisAlignment.end,
-        buttonPadding: const EdgeInsets.symmetric(horizontal: 8),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
       ),
     );
   }
+
 
   Future<void> _uploadFile() async {
     final result = await FilePicker.platform.pickFiles(

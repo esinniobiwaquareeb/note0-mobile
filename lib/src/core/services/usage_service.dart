@@ -1,12 +1,17 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 
 final usageServiceProvider = Provider((ref) => UsageService());
 
 class UsageService {
-  static const String _baseUrl = 'http://localhost:3001/v1';
+  String get _baseUrl => dotenv.get('API_BASE_URL', fallback: 'http://localhost:3000/v1');
+
   static const String _recordingCountKey = 'free_recording_count';
 
   Future<int> getFreeRecordingCount() async {
@@ -25,13 +30,14 @@ class UsageService {
       final response = await http.get(Uri.parse('$_baseUrl/config/public'));
       if (response.statusCode == 200) {
         final Map<String, dynamic> config = jsonDecode(response.body);
-        return config['free_audio_limit'] ?? 3;
+        return config['free_audio_limit'] ?? 1;
       }
     } catch (e) {
-      print('Error fetching free limit: $e');
+      debugPrint('Error fetching free limit: $e');
     }
-    return 3; // Fallback
+    return 1; // Fallback
   }
+
 
   Future<bool> canRecord(bool isPro) async {
     if (isPro) return true;

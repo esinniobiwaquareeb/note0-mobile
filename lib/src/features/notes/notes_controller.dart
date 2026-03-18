@@ -3,8 +3,8 @@ import 'package:uuid/uuid.dart';
 import '../../data/encrypted_file_store.dart';
 import '../../data/note.dart';
 import '../../data/notes_repository.dart';
-import '../../data/mock_notes.dart';
 import '../../core/utils/extensions.dart';
+
 
 final encryptedStoreProvider = Provider<EncryptedFileStore>((ref) {
   return EncryptedFileStore();
@@ -89,15 +89,8 @@ class NotesController extends AsyncNotifier<List<Note>> {
     final notes = state.asData?.value ?? [];
     Note? note = notes.firstWhereOrNull((n) => n.id == noteId);
     
-    // If not in state, check mock notes
-    if (note == null) {
-      final mockNote = MockNotes.list.firstWhereOrNull((n) => n.id == noteId);
-      if (mockNote != null) {
-        note = mockNote;
-      }
-    }
-
     if (note != null) {
+
       final updatedNote = note.copyWith(folderId: folderId, updatedAt: DateTime.now());
       await ref.read(notesRepositoryProvider).upsert(updatedNote);
       state = AsyncData(await ref.read(notesRepositoryProvider).list());

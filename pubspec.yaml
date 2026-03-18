@@ -11,6 +11,8 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.8
   flutter_riverpod: ^2.5.1
+  flutter_dotenv: ^5.2.1
+
   path_provider: ^2.1.5
   cryptography: ^2.9.0
   flutter_secure_storage: ^10.0.0
@@ -50,6 +52,8 @@ flutter:
   assets:
     - assets/images/
     - assets/audio/
+    - .env
+
   fonts:
     - family: Inter
       fonts:
