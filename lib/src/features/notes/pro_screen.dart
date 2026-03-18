@@ -3,8 +3,15 @@ import 'package:gap/gap.dart';
 import 'notes_list_screen.dart';
 import '../../core/theme/app_theme.dart';
 
-class ProScreen extends StatelessWidget {
+class ProScreen extends StatefulWidget {
   const ProScreen({super.key});
+
+  @override
+  State<ProScreen> createState() => _ProScreenState();
+}
+
+class _ProScreenState extends State<ProScreen> {
+  String _selectedOption = 'Yearly';
 
   @override
   Widget build(BuildContext context) {
@@ -40,7 +47,10 @@ class ProScreen extends StatelessWidget {
                       ),
                       const Gap(12),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xFF404040),
                           borderRadius: BorderRadius.circular(8),
@@ -48,7 +58,11 @@ class ProScreen extends StatelessWidget {
                         child: const Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.auto_awesome, color: Colors.white, size: 14),
+                            Icon(
+                              Icons.auto_awesome,
+                              color: Colors.white,
+                              size: 14,
+                            ),
                             Gap(4),
                             Text(
                               'PRO',
@@ -76,7 +90,51 @@ class ProScreen extends StatelessWidget {
                   const Gap(32),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: _SubscriptionOptions(),
+                    child: Column(
+                      children: [
+                        GestureDetector(
+                          onTap: () =>
+                              setState(() => _selectedOption = 'Yearly'),
+                          child: _OptionTile(
+                            title: 'Yearly Access',
+                            price: '₦45,000 per year',
+                            description: 'Just ₦865 per week',
+                            isAnnual: true,
+                            isSelected: _selectedOption == 'Yearly',
+                          ),
+                        ),
+                        const Gap(16),
+                        GestureDetector(
+                          onTap: () =>
+                              setState(() => _selectedOption = 'Weekly'),
+                          child: _OptionTile(
+                            title: 'Weekly Access',
+                            price: '₦2,500 per week',
+                            description: '',
+                            isSelected: _selectedOption == 'Weekly',
+                          ),
+                        ),
+                        const Gap(24),
+                        const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.check_circle,
+                              color: Colors.green,
+                              size: 16,
+                            ),
+                            Gap(8),
+                            Text(
+                              'Auto Renewable, Cancel Anytime',
+                              style: TextStyle(
+                                color: Colors.grey,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -98,9 +156,15 @@ class PositionNotifier extends StatelessWidget {
       decoration: BoxDecoration(
         color: isDark ? AppTheme.darkSurface : Colors.white,
         borderRadius: BorderRadius.circular(40),
-        border: Border.all(color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05)),
+        border: Border.all(
+          color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
+        ),
         boxShadow: [
-          BoxShadow(color: isDark ? Colors.black : Colors.black12, blurRadius: 20, offset: const Offset(0, 4)),
+          BoxShadow(
+            color: isDark ? Colors.black : Colors.black12,
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+          ),
         ],
       ),
       child: Row(
@@ -108,9 +172,30 @@ class PositionNotifier extends StatelessWidget {
         children: [
           Icon(Icons.mic, color: Colors.grey[400], size: 20),
           const Gap(8),
-          Text('..........', style: TextStyle(letterSpacing: 2, fontSize: 18, color: isDark ? Colors.white54 : Colors.black)),
-          Text('||||', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: isDark ? Colors.white : Colors.black)),
-          Text('..........', style: TextStyle(letterSpacing: 2, fontSize: 18, color: isDark ? Colors.white54 : Colors.black)),
+          Text(
+            '..........',
+            style: TextStyle(
+              letterSpacing: 2,
+              fontSize: 18,
+              color: isDark ? Colors.white54 : Colors.black,
+            ),
+          ),
+          Text(
+            '||||',
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+              fontSize: 18,
+              color: isDark ? Colors.white : Colors.black,
+            ),
+          ),
+          Text(
+            '..........',
+            style: TextStyle(
+              letterSpacing: 2,
+              fontSize: 18,
+              color: isDark ? Colors.white54 : Colors.black,
+            ),
+          ),
           const Gap(8),
           Icon(Icons.mic_none, color: Colors.grey[400], size: 20),
         ],
@@ -144,7 +229,13 @@ class _HeaderVisualization extends StatelessWidget {
 }
 
 class _LabelCloudItem extends StatelessWidget {
-  const _LabelCloudItem({required this.text, this.top, this.bottom, this.left, this.right});
+  const _LabelCloudItem({
+    required this.text,
+    this.top,
+    this.bottom,
+    this.left,
+    this.right,
+  });
   final String text;
   final double? top, bottom, left, right;
 
@@ -162,7 +253,13 @@ class _LabelCloudItem extends StatelessWidget {
           border: Border.all(color: isDark ? Colors.white54 : Colors.black),
           borderRadius: BorderRadius.circular(20),
         ),
-        child: Text(text, style: TextStyle(fontWeight: FontWeight.w700, color: isDark ? Colors.white : Colors.black)),
+        child: Text(
+          text,
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            color: isDark ? Colors.white : Colors.black,
+          ),
+        ),
       ),
     );
   }
@@ -200,48 +297,20 @@ class _FeatureItem extends StatelessWidget {
         CircleAvatar(
           radius: 12,
           backgroundColor: isDark ? Colors.white12 : const Color(0xFF262626),
-          child: Icon(Icons.check, color: isDark ? Colors.white70 : Colors.white, size: 14),
+          child: Icon(
+            Icons.check,
+            color: isDark ? Colors.white70 : Colors.white,
+            size: 14,
+          ),
         ),
         const Gap(16),
         Text(
           label,
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: isDark ? Colors.white : Colors.black),
-        ),
-      ],
-    );
-  }
-}
-
-class _SubscriptionOptions extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        _OptionTile(
-          title: 'Yearly Access',
-          price: '₦45,000 per year',
-          description: 'Just ₦865 per week',
-          isAnnual: true,
-          isSelected: true,
-        ),
-        const Gap(16),
-        const _OptionTile(
-          title: 'Weekly Access',
-          price: '₦2,500 per week',
-          description: '',
-          isSelected: false,
-        ),
-        const Gap(24),
-        const Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.check_circle, color: Colors.green, size: 16),
-            Gap(8),
-            Text(
-              'Auto Renewable, Cancel Anytime',
-              style: TextStyle(color: Colors.grey, fontSize: 13),
-            ),
-          ],
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
+            color: isDark ? Colors.white : Colors.black,
+          ),
         ),
       ],
     );
@@ -289,7 +358,11 @@ class _OptionTile extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: isDark ? Colors.white : Colors.black),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                      color: isDark ? Colors.white : Colors.black,
+                    ),
                   ),
                   const Gap(4),
                   Text(
@@ -311,14 +384,21 @@ class _OptionTile extends StatelessWidget {
               top: -30,
               right: -10,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.green,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Text(
                   'Save 86%',
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 11),
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 11,
+                  ),
                 ),
               ),
             ),
@@ -333,7 +413,12 @@ class _BottomActions extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
-      padding: EdgeInsets.fromLTRB(24, 16, 24, MediaQuery.of(context).padding.bottom + 16),
+      padding: EdgeInsets.fromLTRB(
+        24,
+        16,
+        24,
+        MediaQuery.of(context).padding.bottom + 16,
+      ),
       child: Column(
         children: [
           SizedBox(
@@ -364,11 +449,26 @@ class _BottomActions extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Text('Terms', style: TextStyle(color: Colors.grey, fontSize: 12)),
-              const Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Text('•', style: TextStyle(color: Colors.grey))),
-              const Text('Privacy Policy', style: TextStyle(color: Colors.grey, fontSize: 12)),
-              const Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Text('•', style: TextStyle(color: Colors.grey))),
-              const Text('Restore', style: TextStyle(color: Colors.grey, fontSize: 12)),
+              const Text(
+                'Terms',
+                style: TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8),
+                child: Text('•', style: TextStyle(color: Colors.grey)),
+              ),
+              const Text(
+                'Privacy Policy',
+                style: TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8),
+                child: Text('•', style: TextStyle(color: Colors.grey)),
+              ),
+              const Text(
+                'Restore',
+                style: TextStyle(color: Colors.grey, fontSize: 12),
+              ),
             ],
           ),
         ],

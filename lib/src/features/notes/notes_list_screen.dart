@@ -4,15 +4,17 @@ import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../core/utils/toast_utils.dart';
+import '../../core/services/auth_service.dart';
+import '../../core/services/usage_service.dart';
 import 'notes_controller.dart';
 import 'notes_editor_screen.dart';
 import 'settings_screen.dart';
 import 'audio_recording_screen.dart';
+import 'pro_screen.dart';
 import 'youtube_processing_dialog.dart';
 import 'folders_controller.dart';
 import 'folder_details_screen.dart';
 import '../onboarding/user_guide_overlay.dart';
-import '../../core/utils/extensions.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/mock_notes.dart';
 import '../../data/note.dart';
@@ -44,23 +46,34 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark ? AppTheme.darkBackground : AppTheme.lightBackground,
+      backgroundColor: isDark
+          ? AppTheme.darkBackground
+          : AppTheme.lightBackground,
       appBar: AppBar(
         title: _isSearching
             ? TextField(
                 controller: _searchController,
                 autofocus: true,
-                style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 18),
+                style: TextStyle(
+                  color: isDark ? Colors.white : Colors.black87,
+                  fontSize: 18,
+                ),
                 decoration: InputDecoration(
                   hintText: 'Search notes...',
-                  hintStyle: TextStyle(color: isDark ? Colors.white38 : Colors.black38),
+                  hintStyle: TextStyle(
+                    color: isDark ? Colors.white38 : Colors.black38,
+                  ),
                   border: InputBorder.none,
                 ),
                 onChanged: (value) => setState(() => _searchQuery = value),
               )
             : Row(
                 children: [
-                  Image.asset('assets/images/app_icon.png', width: 32, height: 32),
+                  Image.asset(
+                    'assets/images/app_icon.png',
+                    width: 32,
+                    height: 32,
+                  ),
                   const Gap(12),
                   Text(
                     'Note0',
@@ -75,7 +88,10 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
         centerTitle: false,
         actions: [
           IconButton(
-            icon: Icon(_isSearching ? Icons.close : Icons.search, color: isDark ? Colors.white : Colors.black87),
+            icon: Icon(
+              _isSearching ? Icons.close : Icons.search,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
             onPressed: () {
               setState(() {
                 if (_isSearching) {
@@ -91,13 +107,17 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: InkWell(
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const SettingsScreen()),
-              ),
+              onTap: () => Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const SettingsScreen())),
               child: CircleAvatar(
                 backgroundColor: isDark ? Colors.white12 : Colors.grey[200],
                 maxRadius: 18,
-                child: Icon(Icons.person_outline, color: isDark ? Colors.white : Colors.black54, size: 20),
+                child: Icon(
+                  Icons.person_outline,
+                  color: isDark ? Colors.white : Colors.black54,
+                  size: 20,
+                ),
               ),
             ),
           ),
@@ -133,108 +153,147 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
                 ),
               ),
               Expanded(
-                child: _selectedTab == 0 
-                  ? Builder(
-                      builder: (context) {
-                        final notes = notesAsync.asData?.value ?? [];
-                        var displayNotes = [...MockNotes.list, ...notes];
-    
-                        if (_searchQuery.isNotEmpty) {
-                          displayNotes = displayNotes.where((note) {
-                            final title = note.title.toLowerCase();
-                            final content = note.content.toLowerCase();
-                            final query = _searchQuery.toLowerCase();
-                            return title.contains(query) || content.contains(query);
-                          }).toList();
-                        }
-    
-                        if (notesAsync.isLoading && displayNotes.isEmpty) {
-                          return const Center(child: CircularProgressIndicator());
-                        }
-    
-                        if (notesAsync.hasError) {
-                          return Center(child: Text('Error: ${notesAsync.error}'));
-                        }
-    
-                        if (displayNotes.isEmpty) {
-                          return Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.note_alt_outlined, size: 64, color: Colors.grey.withOpacity(0.3)),
-                                const Gap(16),
-                                const Text('No notes yet', style: TextStyle(color: Colors.grey)),
-                              ],
-                            ),
-                          );
-                        }
-    
-                        return ListView(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-                          children: [
-                            Text(
-                              'Ongoing',
-                              style: TextStyle(
-                                color: Colors.grey[500],
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
+                child: _selectedTab == 0
+                    ? Builder(
+                        builder: (context) {
+                          final notes = notesAsync.asData?.value ?? [];
+                          var displayNotes = [...MockNotes.list, ...notes];
+
+                          if (_searchQuery.isNotEmpty) {
+                            displayNotes = displayNotes.where((note) {
+                              final title = note.title.toLowerCase();
+                              final content = note.content.toLowerCase();
+                              final query = _searchQuery.toLowerCase();
+                              return title.contains(query) ||
+                                  content.contains(query);
+                            }).toList();
+                          }
+
+                          if (notesAsync.isLoading && displayNotes.isEmpty) {
+                            return const Center(
+                              child: CircularProgressIndicator(),
+                            );
+                          }
+
+                          if (notesAsync.hasError) {
+                            return Center(
+                              child: Text('Error: ${notesAsync.error}'),
+                            );
+                          }
+
+                          if (displayNotes.isEmpty) {
+                            return Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.note_alt_outlined,
+                                    size: 64,
+                                    color: Colors.grey.withOpacity(0.3),
+                                  ),
+                                  const Gap(16),
+                                  const Text(
+                                    'No notes yet',
+                                    style: TextStyle(color: Colors.grey),
+                                  ),
+                                ],
                               ),
+                            );
+                          }
+
+                          return ListView(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 24,
                             ),
-                            const Gap(16),
-                            _AnalyzingCard(),
-                            const Gap(24),
-                            Text(
-                              DateFormat('EEE, MMM dd').format(DateTime.now()),
-                              style: TextStyle(
-                                color: Colors.grey[500],
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
+                            children: [
+                              Text(
+                                'Ongoing',
+                                style: TextStyle(
+                                  color: Colors.grey[500],
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
-                            ),
-                            const Gap(16),
-                            ...displayNotes.map((note) => Dismissible(
+                              const Gap(16),
+                              _AnalyzingCard(),
+                              const Gap(24),
+                              Text(
+                                DateFormat(
+                                  'EEE, MMM dd',
+                                ).format(DateTime.now()),
+                                style: TextStyle(
+                                  color: Colors.grey[500],
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const Gap(16),
+                              ...displayNotes.map(
+                                (note) => Dismissible(
                                   key: Key(note.id),
                                   direction: DismissDirection.horizontal,
                                   background: Container(
                                     alignment: Alignment.centerLeft,
-                                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 20,
+                                    ),
                                     color: Colors.blue,
-                                    child: const Icon(Icons.drive_file_move_outlined, color: Colors.white),
+                                    child: const Icon(
+                                      Icons.drive_file_move_outlined,
+                                      color: Colors.white,
+                                    ),
                                   ),
                                   secondaryBackground: Container(
                                     alignment: Alignment.centerRight,
-                                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 20,
+                                    ),
                                     color: Colors.red,
-                                    child: const Icon(Icons.delete_outline, color: Colors.white),
+                                    child: const Icon(
+                                      Icons.delete_outline,
+                                      color: Colors.white,
+                                    ),
                                   ),
                                   confirmDismiss: (direction) async {
-                                    if (direction == DismissDirection.endToStart) {
+                                    if (direction ==
+                                        DismissDirection.endToStart) {
                                       // Delete
                                       return await _confirmDelete(context);
                                     } else {
                                       // Move
-                                      _showMoveToFolderSheetForNote(context, note);
+                                      _showMoveToFolderSheetForNote(
+                                        context,
+                                        note,
+                                      );
                                       return false;
                                     }
                                   },
                                   onDismissed: (direction) {
-                                    if (direction == DismissDirection.endToStart) {
-                                      ref.read(notesControllerProvider.notifier).deleteNote(note.id);
+                                    if (direction ==
+                                        DismissDirection.endToStart) {
+                                      ref
+                                          .read(
+                                            notesControllerProvider.notifier,
+                                          )
+                                          .deleteNote(note.id);
                                     }
                                   },
                                   child: _NoteTile(note: note),
-                                )),
-                          ],
-                        );
-                      },
-                    )
-                  : _FoldersView(),
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      )
+                    : _FoldersView(),
               ),
             ],
           ),
           if (ref.watch(showGuideProvider))
             UserGuideOverlay(
-              onDismiss: () => ref.read(showGuideProvider.notifier).state = false,
+              onDismiss: () =>
+                  ref.read(showGuideProvider.notifier).state = false,
             ),
         ],
       ),
@@ -259,29 +318,121 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
   }
 
   Future<void> _startRecording() async {
+    final usageService = ref.read(usageServiceProvider);
+    final authService = ref.read(authServiceProvider);
+
+    final isAuthed = await authService.isAuthenticated();
+
+    if (!isAuthed) {
+      final canRecord = await usageService.canRecord(false);
+      if (!canRecord) {
+        if (mounted) {
+          _showLimitReachedDialog(context);
+        }
+        return;
+      }
+    }
+
+    if (!mounted) return;
     final path = await Navigator.push<String?>(
       context,
       MaterialPageRoute(builder: (context) => const AudioRecordingScreen()),
     );
-    
+
     if (path != null) {
+      if (!isAuthed) {
+        await usageService.incrementRecordingCount();
+      }
+
       _showSuccess('Recording completed. Analyzing...');
-      
+
       // Create a new note with the audio path
-      final note = await ref.read(notesControllerProvider.notifier).createEmpty();
-      await ref.read(notesControllerProvider.notifier).upsert(
-        id: note.id,
-        title: 'New Recording',
-        content: 'Audio recording captured at ${DateFormat('HH:mm').format(DateTime.now())}',
-        audioPath: path,
-      );
-      
+      final note = await ref
+          .read(notesControllerProvider.notifier)
+          .createEmpty();
+      await ref
+          .read(notesControllerProvider.notifier)
+          .upsert(
+            id: note.id,
+            title: 'New Recording',
+            content:
+                'Audio recording captured at ${DateFormat('HH:mm').format(DateTime.now())}',
+            audioPath: path,
+          );
+
       if (mounted) {
         Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => NotesEditorScreen(noteId: note.id)),
         );
       }
     }
+  }
+
+  void _showLimitReachedDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.lock_outline, color: Colors.blue),
+            Gap(12),
+            Text('Limit Reached'),
+          ],
+        ),
+        content: const Text(
+          'You have reached the limit for free audio recordings. Please sign in or upgrade to Pro to continue transcribing your thoughts.',
+          style: TextStyle(fontSize: 15, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Maybe Later',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              final authService = ref.read(authServiceProvider);
+              final result = await authService.signInWithGoogle();
+              if (result != null && mounted) {
+                _showSuccess('Successfully signed in with Google!');
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text('Sign in with Google'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ProScreen()),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.black,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text('Go Pro'),
+          ),
+        ],
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        actionsAlignment: MainAxisAlignment.end,
+        buttonPadding: const EdgeInsets.symmetric(horizontal: 8),
+      ),
+    );
   }
 
   Future<void> _uploadFile() async {
@@ -306,19 +457,26 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
 
   Future<bool> _confirmDelete(BuildContext context) async {
     return await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Note?'),
-        content: const Text('This action cannot be undone.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Delete Note?'),
+            content: const Text('This action cannot be undone.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text(
+                  'Delete',
+                  style: TextStyle(color: Colors.red),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
-    ) ?? false;
+        ) ??
+        false;
   }
 
   void _showMoveToFolderSheetForNote(BuildContext context, Note note) {
@@ -366,7 +524,7 @@ class _TabButton extends StatelessWidget {
               : Colors.transparent,
           borderRadius: BorderRadius.circular(24),
           border: Border.all(
-            color: isSelected 
+            color: isSelected
                 ? (isDark ? Colors.white12 : Colors.grey[300]!)
                 : Colors.transparent,
           ),
@@ -377,14 +535,18 @@ class _TabButton extends StatelessWidget {
             Icon(
               icon,
               size: 20,
-              color: isSelected ? (isDark ? Colors.white : Colors.black87) : Colors.grey,
+              color: isSelected
+                  ? (isDark ? Colors.white : Colors.black87)
+                  : Colors.grey,
             ),
             const Gap(8),
             Text(
               label,
               style: TextStyle(
                 fontWeight: FontWeight.w600,
-                color: isSelected ? (isDark ? Colors.white : Colors.black87) : Colors.grey,
+                color: isSelected
+                    ? (isDark ? Colors.white : Colors.black87)
+                    : Colors.grey,
               ),
             ),
           ],
@@ -403,7 +565,9 @@ class _AnalyzingCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: isDark ? AppTheme.darkSurface : Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: isDark ? Colors.white10 : Colors.grey.withOpacity(0.1)),
+        border: Border.all(
+          color: isDark ? Colors.white10 : Colors.grey.withOpacity(0.1),
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.blue.withOpacity(0.05),
@@ -422,7 +586,9 @@ class _AnalyzingCard extends StatelessWidget {
                 height: 24,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.blue.withOpacity(0.5)),
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    Colors.blue.withOpacity(0.5),
+                  ),
                 ),
               ),
               const Icon(Icons.auto_awesome, size: 12, color: Colors.blue),
@@ -443,10 +609,7 @@ class _AnalyzingCard extends StatelessWidget {
               const Gap(2),
               Text(
                 'Extracting key concepts & summary',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[500],
-                ),
+                style: TextStyle(fontSize: 12, color: Colors.grey[500]),
               ),
             ],
           ),
@@ -468,7 +631,9 @@ class _NoteTile extends StatelessWidget {
       child: InkWell(
         onTap: () {
           Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => NotesEditorScreen(noteId: note.id)),
+            MaterialPageRoute(
+              builder: (_) => NotesEditorScreen(noteId: note.id),
+            ),
           );
         },
         borderRadius: BorderRadius.circular(20),
@@ -477,7 +642,9 @@ class _NoteTile extends StatelessWidget {
           decoration: BoxDecoration(
             color: isDark ? AppTheme.darkSurface : Colors.white,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: isDark ? Colors.white10 : Colors.grey.withOpacity(0.1)),
+            border: Border.all(
+              color: isDark ? Colors.white10 : Colors.grey.withOpacity(0.1),
+            ),
           ),
           child: Row(
             children: [
@@ -491,8 +658,10 @@ class _NoteTile extends StatelessWidget {
                 child: Hero(
                   tag: 'note-icon-${note.id}',
                   child: Icon(
-                    note.title.contains('Noise') ? Icons.speaker_group : Icons.volume_up, 
-                    color: isDark ? Colors.white70 : Colors.black54
+                    note.title.contains('Noise')
+                        ? Icons.speaker_group
+                        : Icons.volume_up,
+                    color: isDark ? Colors.white70 : Colors.black54,
                   ),
                 ),
               ),
@@ -510,7 +679,7 @@ class _NoteTile extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontWeight: FontWeight.w600, 
+                              fontWeight: FontWeight.w600,
                               fontSize: 16,
                               color: isDark ? Colors.white : Colors.black,
                             ),
@@ -518,13 +687,18 @@ class _NoteTile extends StatelessWidget {
                         ),
                         Text(
                           DateFormat('MMM dd').format(note.updatedAt),
-                          style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                          style: TextStyle(
+                            color: Colors.grey[500],
+                            fontSize: 12,
+                          ),
                         ),
                       ],
                     ),
                     const Gap(4),
                     Text(
-                      note.content.isEmpty ? 'The audio recording has been analyzed...' : note.content,
+                      note.content.isEmpty
+                          ? 'The audio recording has been analyzed...'
+                          : note.content,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(color: Colors.grey[500], fontSize: 14),
@@ -550,11 +724,18 @@ class _BottomActionArea extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
-      padding: EdgeInsets.fromLTRB(24, 16, 24, MediaQuery.of(context).padding.bottom + 16),
+      padding: EdgeInsets.fromLTRB(
+        24,
+        16,
+        24,
+        MediaQuery.of(context).padding.bottom + 16,
+      ),
       decoration: BoxDecoration(
         color: isDark ? AppTheme.darkBackground : AppTheme.lightBackground,
         border: Border(
-          top: BorderSide(color: isDark ? Colors.white12 : Colors.black.withOpacity(0.05)),
+          top: BorderSide(
+            color: isDark ? Colors.white12 : Colors.black.withOpacity(0.05),
+          ),
         ),
       ),
       child: Row(
@@ -650,7 +831,9 @@ class _FoldersView extends ConsumerWidget {
           itemCount: folders.length + 1,
           itemBuilder: (context, index) {
             if (index == folders.length) {
-              return _AddFolderCard(onTap: () => _showCreateFolderDialog(context, ref));
+              return _AddFolderCard(
+                onTap: () => _showCreateFolderDialog(context, ref),
+              );
             }
             final folder = folders[index];
             final count = notes.where((n) => n.folderId == folder.id).length;
@@ -659,7 +842,9 @@ class _FoldersView extends ConsumerWidget {
               count: count,
               onTap: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => FolderDetailsScreen(folder: folder)),
+                MaterialPageRoute(
+                  builder: (_) => FolderDetailsScreen(folder: folder),
+                ),
               ),
               onLongPress: () => _showFolderOptions(context, ref, folder),
             );
@@ -681,11 +866,16 @@ class _FoldersView extends ConsumerWidget {
           autofocus: true,
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
           TextButton(
             onPressed: () {
               if (nameController.text.isNotEmpty) {
-                ref.read(foldersControllerProvider.notifier).createFolder(
+                ref
+                    .read(foldersControllerProvider.notifier)
+                    .createFolder(
                       nameController.text,
                       Icons.folder.codePoint,
                       Colors.blue.value,
@@ -710,9 +900,14 @@ class _FoldersView extends ConsumerWidget {
           children: [
             ListTile(
               leading: const Icon(Icons.delete_outline, color: Colors.red),
-              title: const Text('Delete Folder', style: TextStyle(color: Colors.red)),
+              title: const Text(
+                'Delete Folder',
+                style: TextStyle(color: Colors.red),
+              ),
               onTap: () {
-                ref.read(foldersControllerProvider.notifier).deleteFolder(folder.id);
+                ref
+                    .read(foldersControllerProvider.notifier)
+                    .deleteFolder(folder.id);
                 Navigator.pop(context);
               },
             ),
@@ -737,14 +932,23 @@ class _AddFolderCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: isDark ? Colors.white.withOpacity(0.03) : Colors.grey[50],
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: isDark ? Colors.white12 : Colors.black.withOpacity(0.05), style: BorderStyle.solid),
+          border: Border.all(
+            color: isDark ? Colors.white12 : Colors.black.withOpacity(0.05),
+            style: BorderStyle.solid,
+          ),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.add_circle_outline, color: Colors.grey[400], size: 32),
             const Gap(8),
-            Text('New Folder', style: TextStyle(color: Colors.grey[500], fontWeight: FontWeight.w600)),
+            Text(
+              'New Folder',
+              style: TextStyle(
+                color: Colors.grey[500],
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ],
         ),
       ),
@@ -780,10 +984,18 @@ class _FolderCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: isDark ? AppTheme.darkSurface : Colors.white,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05)),
-          boxShadow: isDark ? null : [
-            BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4)),
-          ],
+          border: Border.all(
+            color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
+          ),
+          boxShadow: isDark
+              ? null
+              : [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.02),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -795,7 +1007,11 @@ class _FolderCard extends StatelessWidget {
                 color: color.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(IconData(iconCode, fontFamily: 'MaterialIcons'), color: color, size: 24),
+              child: Icon(
+                IconData(iconCode, fontFamily: 'MaterialIcons'),
+                color: color,
+                size: 24,
+              ),
             ),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -813,10 +1029,7 @@ class _FolderCard extends StatelessWidget {
                 const Gap(4),
                 Text(
                   '$count notes',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.grey[500],
-                  ),
+                  style: TextStyle(fontSize: 13, color: Colors.grey[500]),
                 ),
               ],
             ),
@@ -841,7 +1054,7 @@ class _NewNoteSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -933,7 +1146,10 @@ class _NewNoteOption extends StatelessWidget {
             Container(
               width: 48,
               height: 48,
-              decoration: BoxDecoration(color: iconBg, borderRadius: BorderRadius.circular(12)),
+              decoration: BoxDecoration(
+                color: iconBg,
+                borderRadius: BorderRadius.circular(12),
+              ),
               child: Icon(icon, color: iconColor),
             ),
             const Gap(16),
@@ -950,10 +1166,7 @@ class _NewNoteOption extends StatelessWidget {
                   ),
                   Text(
                     subtitle,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey[600],
-                    ),
+                    style: TextStyle(fontSize: 13, color: Colors.grey[600]),
                   ),
                 ],
               ),
@@ -965,6 +1178,7 @@ class _NewNoteOption extends StatelessWidget {
     );
   }
 }
+
 class _MoveToFolderSheetInList extends ConsumerWidget {
   const _MoveToFolderSheetInList({required this.note});
   final Note note;
@@ -994,30 +1208,54 @@ class _MoveToFolderSheetInList extends ConsumerWidget {
             error: (err, stack) => Text('Error: $err'),
             data: (folders) {
               return ConstrainedBox(
-                constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.4),
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.4,
+                ),
                 child: ListView(
                   shrinkWrap: true,
                   children: [
                     ListTile(
                       leading: const Icon(Icons.not_interested),
                       title: const Text('No Folder'),
-                      trailing: note.folderId == null ? const Icon(Icons.check, color: Colors.blue) : null,
+                      trailing: note.folderId == null
+                          ? const Icon(Icons.check, color: Colors.blue)
+                          : null,
                       onTap: () {
-                        ref.read(notesControllerProvider.notifier).moveToFolder(note.id, null);
+                        ref
+                            .read(notesControllerProvider.notifier)
+                            .moveToFolder(note.id, null);
                         Navigator.pop(context);
-                        ToastUtils.showSuccess(context, 'Note removed from folder');
+                        ToastUtils.showSuccess(
+                          context,
+                          'Note removed from folder',
+                        );
                       },
                     ),
-                    ...folders.map((folder) => ListTile(
-                          leading: Icon(IconData(folder.iconCode, fontFamily: 'MaterialIcons'), color: Color(folder.colorValue)),
-                          title: Text(folder.name),
-                          trailing: note.folderId == folder.id ? const Icon(Icons.check, color: Colors.blue) : null,
-                          onTap: () {
-                            ref.read(notesControllerProvider.notifier).moveToFolder(note.id, folder.id);
-                            Navigator.pop(context);
-                            ToastUtils.showSuccess(context, 'Note moved to ${folder.name}');
-                          },
-                        )),
+                    ...folders.map(
+                      (folder) => ListTile(
+                        leading: Icon(
+                          IconData(
+                            folder.iconCode,
+                            fontFamily: 'MaterialIcons',
+                          ),
+                          color: Color(folder.colorValue),
+                        ),
+                        title: Text(folder.name),
+                        trailing: note.folderId == folder.id
+                            ? const Icon(Icons.check, color: Colors.blue)
+                            : null,
+                        onTap: () {
+                          ref
+                              .read(notesControllerProvider.notifier)
+                              .moveToFolder(note.id, folder.id);
+                          Navigator.pop(context);
+                          ToastUtils.showSuccess(
+                            context,
+                            'Note moved to ${folder.name}',
+                          );
+                        },
+                      ),
+                    ),
                   ],
                 ),
               );
