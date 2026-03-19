@@ -1,10 +1,16 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+import 'package:path_provider/path_provider.dart';
+
 import 'notes_controller.dart';
 import 'folders_controller.dart';
 import 'quiz_screen.dart';
@@ -12,16 +18,9 @@ import 'flashcards_study_screen.dart';
 import 'ai_chat_screen.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/note.dart';
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
-import 'dart:typed_data';
-
-
 import '../../core/utils/extensions.dart';
 import '../../core/utils/toast_utils.dart';
+
 
 class NotesEditorScreen extends ConsumerStatefulWidget {
   const NotesEditorScreen({super.key, required this.noteId});
@@ -361,7 +360,11 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(AppTheme.borderRadiusMedium)),
       ),
-      builder: (context) => _OptionsMenuSheet(note: note),
+      builder: (context) => _OptionsMenuSheet(
+        note: note,
+        onExportPdf: () => _exportToPdf(note),
+      ),
+
     );
   }
 }
@@ -1038,8 +1041,10 @@ class _MoveToFolderSheet extends ConsumerWidget {
 }
 
 class _OptionsMenuSheet extends ConsumerWidget {
-  const _OptionsMenuSheet({required this.note});
+  const _OptionsMenuSheet({required this.note, required this.onExportPdf});
   final Note note;
+  final VoidCallback onExportPdf;
+
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1065,6 +1070,15 @@ class _OptionsMenuSheet extends ConsumerWidget {
           ),
           const Gap(24),
           _MenuOption(
+            icon: Icons.picture_as_pdf_outlined,
+            label: 'Export as PDF',
+            onTap: () {
+              Navigator.pop(context);
+              onExportPdf();
+            },
+          ),
+          const Gap(16),
+          _MenuOption(
             icon: Icons.ios_share, 
             label: 'Share Note', 
             onTap: () {
@@ -1076,6 +1090,7 @@ class _OptionsMenuSheet extends ConsumerWidget {
               );
             }
           ),
+
           const Gap(16),
           _MenuOption(
             icon: Icons.file_copy_outlined, 

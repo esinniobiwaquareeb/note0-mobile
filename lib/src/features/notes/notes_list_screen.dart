@@ -50,16 +50,16 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
     try {
       final documentScanner = DocumentScanner(
         options: DocumentScannerOptions(
-          documentFormat: DocumentFormat.jpeg,
+          documentFormats: {DocumentFormat.jpeg},
           mode: ScannerMode.full,
         ),
       );
 
 
       final result = await documentScanner.scanDocument();
-      if (result.images.isNotEmpty) {
+      if (result.images!.isNotEmpty) {
         // Upload the first image (or handle multiple if needed later)
-        final path = result.images.first;
+        final path = result.images!.first;
         await ref.read(notesControllerProvider.notifier).uploadScan(path);
         ToastUtils.showSuccess(context, 'Document scanned and analyzed');
       }
