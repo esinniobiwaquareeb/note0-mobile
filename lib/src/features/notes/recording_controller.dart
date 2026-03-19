@@ -4,6 +4,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:uuid/uuid.dart';
+import 'package:audio_session/audio_session.dart';
+
 
 final recordingControllerProvider = StateNotifierProvider<RecordingController, RecordingState>((ref) {
   return RecordingController();
@@ -52,14 +54,50 @@ class RecordingController extends StateNotifier<RecordingState> {
       if (status != PermissionStatus.granted) return;
     }
 
-    final dir = await getApplicationDocumentsDirectory();
-    final path = '${dir.path}/${_uuid.v4()}.m4a';
+    try {
+      // Configure audio session for iOS to handle potential conflicts with playback
+      final session = await AudioSession.instance;
+      // Using a simpler, more compatible configuration for iOS
+      await session.configure(AudioSessionConfiguration(
+        avAudioSessionCategory: AVAudioSessionCategory.playAndRecord,
+        avAudioSessionCategoryOptions: AVAudioSessionCategoryOptions.defaultToSpeaker | 
+                                      AVAudioSessionCategoryOptions.allowBluetooth,
+        avAudioSessionMode: AVAudioSessionMode.defaultMode,
+        avAudioSessionSetActiveOptions: AVAudioSessionSetActiveOptions.none,
+      ));
+      
+      await Future.delayed(const Duration(milliseconds: 100));
 
-    await _record.start(const RecordConfig(), path: path);
-    state = state.copyWith(isRecording: true, path: path, duration: Duration.zero);
-    
-    _startTimers();
+      
+      // Retry session activation to handle transient system interruptions
+      int retryCount = 0;
+      bool activated = false;
+      while (!activated && retryCount < 3) {
+        try {
+          await session.setActive(true);
+          activated = true;
+        } catch (e) {
+          retryCount++;
+          if (retryCount >= 3) rethrow;
+          await Future.delayed(Duration(milliseconds: 200 * retryCount));
+        }
+      }
+
+      final dir = await getApplicationDocumentsDirectory();
+      final path = '${dir.path}/${_uuid.v4()}.m4a';
+
+      await _record.start(const RecordConfig(), path: path);
+      state = state.copyWith(isRecording: true, path: path, duration: Duration.zero);
+      
+      _startTimers();
+    } catch (e) {
+      print('RecordingController Error: $e');
+      rethrow;
+    }
+
+
   }
+
 
   void _startTimers() {
     _timer?.cancel();

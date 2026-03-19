@@ -45,8 +45,13 @@
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Note0 needs microphone access to record and transcribe audio notes.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Note0 needs camera access to scan notes and documents.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Note0 needs access to your gallery to upload images for analysis.</string>
 	<key>NSAppleMusicUsageDescription</key>
 	<string>Note0 needs access to your media library to play recorded notes.</string>
+
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Note0 uses the local network to communicate with the Dart debugger.</string>
 	<key>NSBonjourServices</key>

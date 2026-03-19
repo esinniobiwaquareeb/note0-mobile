@@ -20,6 +20,8 @@ import 'folder_details_screen.dart';
 import '../onboarding/user_guide_overlay.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/note.dart';
+import 'package:google_mlkit_document_scanner/google_mlkit_document_scanner.dart';
+
 
 
 
@@ -247,8 +249,19 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
                                 ),
                               ),
                               const Gap(16),
-                              _AnalyzingCard(),
-                              const Gap(24),
+                              Consumer(
+                                builder: (context, ref, _) {
+                                  final isAnalyzing = ref.watch(isAnalyzingProvider);
+                                  if (!isAnalyzing) return const SizedBox.shrink();
+                                  return Column(
+                                    children: [
+                                      _AnalyzingCard(),
+                                      const Gap(24),
+                                    ],
+                                  );
+                                },
+                              ),
+
                               Text(
                                 DateFormat(
                                   'EEE, MMM dd',

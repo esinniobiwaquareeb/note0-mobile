@@ -43,11 +43,16 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
     _transcriptController = TextEditingController();
     _audioPlayer = AudioPlayer();
 
-    _audioPlayer.onDurationChanged.listen((d) => setState(() => _duration = d));
-    _audioPlayer.onPositionChanged.listen((p) => setState(() => _position = p));
+    _audioPlayer.onDurationChanged.listen((d) {
+      if (mounted) setState(() => _duration = d);
+    });
+    _audioPlayer.onPositionChanged.listen((p) {
+      if (mounted) setState(() => _position = p);
+    });
     _audioPlayer.onPlayerStateChanged.listen((s) {
       if (mounted) setState(() => _isPlaying = s == PlayerState.playing);
     });
+
   }
 
   @override

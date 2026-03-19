@@ -21,7 +21,10 @@ final notesControllerProvider =
     AsyncNotifierProvider<NotesController, List<Note>>(NotesController.new);
 
 
+final isAnalyzingProvider = StateProvider<bool>((ref) => false);
+
 class NotesController extends AsyncNotifier<List<Note>> {
+
   final _uuid = const Uuid();
   String get _baseUrl => dotenv.get('API_BASE_URL', fallback: 'http://localhost:3000/v1');
 
@@ -57,28 +60,65 @@ class NotesController extends AsyncNotifier<List<Note>> {
     final guestId = await ref.read(usageServiceProvider).getGuestId();
     final url = Uri.parse('$_baseUrl/notes/upload');
     
-    final request = http.MultipartRequest('POST', url)
-      ..headers['x-guest-id'] = guestId
-      ..files.add(await http.MultipartFile.fromPath('audio', filePath));
+    // Set analyzing state
+    ref.read(isAnalyzingProvider.notifier).state = true;
+    
+    try {
+      final request = http.MultipartRequest('POST', url)
+        ..headers['x-guest-id'] = guestId
+        ..files.add(await http.MultipartFile.fromPath('audio', filePath));
 
-    final streamedResponse = await request.send();
-    final response = await http.Response.fromStream(streamedResponse);
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
 
-    if (response.statusCode == 201 || response.statusCode == 200) {
-      final noteJson = jsonDecode(response.body);
-      final note = Note.fromJson(noteJson);
-      
-      // Save locally as well for offline
-      await ref.read(notesRepositoryProvider).upsert(note);
-      
-      // Refresh state
-      state = AsyncData(await fetchNotes());
-      return note;
-    } else {
-      final error = jsonDecode(response.body);
-      throw Exception(error['message'] ?? 'Failed to upload recording');
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        final noteJson = jsonDecode(response.body);
+        final note = Note.fromJson(noteJson);
+        
+        // Save locally as well for offline
+        await ref.read(notesRepositoryProvider).upsert(note);
+        
+        // Refresh state
+        state = AsyncData(await fetchNotes());
+        return note;
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['message'] ?? 'Failed to upload recording');
+      }
+    } finally {
+      ref.read(isAnalyzingProvider.notifier).state = false;
     }
   }
+
+  Future<Note> uploadScan(String filePath) async {
+    final guestId = await ref.read(usageServiceProvider).getGuestId();
+    final url = Uri.parse('$_baseUrl/notes/upload-scan');
+    
+    ref.read(isAnalyzingProvider.notifier).state = true;
+    
+    try {
+      final request = http.MultipartRequest('POST', url)
+        ..headers['x-guest-id'] = guestId
+        ..files.add(await http.MultipartFile.fromPath('image', filePath));
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        final noteJson = jsonDecode(response.body);
+        final note = Note.fromJson(noteJson);
+        await ref.read(notesRepositoryProvider).upsert(note);
+        state = AsyncData(await fetchNotes());
+        return note;
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['message'] ?? 'Failed to upload scan');
+      }
+    } finally {
+      ref.read(isAnalyzingProvider.notifier).state = false;
+    }
+  }
+
 
   Future<Note> createEmpty() async {
 
