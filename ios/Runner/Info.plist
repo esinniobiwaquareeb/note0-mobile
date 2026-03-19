@@ -61,5 +61,16 @@
 		<string>mailto</string>
 		<string>itms-apps</string>
 	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.323719114704-veqf5jqu2r3mjpjksqps95c8m57p9unv</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

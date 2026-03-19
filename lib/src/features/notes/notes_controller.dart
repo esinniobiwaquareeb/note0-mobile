@@ -1,10 +1,13 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../../data/encrypted_file_store.dart';
 import '../../data/note.dart';
 import '../../data/notes_repository.dart';
 import '../../core/utils/extensions.dart';
-
+import '../../core/services/usage_service.dart';
 
 final encryptedStoreProvider = Provider<EncryptedFileStore>((ref) {
   return EncryptedFileStore();
@@ -17,16 +20,68 @@ final notesRepositoryProvider = Provider<NotesRepository>((ref) {
 final notesControllerProvider =
     AsyncNotifierProvider<NotesController, List<Note>>(NotesController.new);
 
+
 class NotesController extends AsyncNotifier<List<Note>> {
   final _uuid = const Uuid();
+  String get _baseUrl => dotenv.get('API_BASE_URL', fallback: 'http://localhost:3000/v1');
 
   @override
   Future<List<Note>> build() async {
-    final notes = await ref.read(notesRepositoryProvider).list();
-    return notes..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    // We'll primarily list from the backend now
+    return await fetchNotes();
+  }
+
+  Future<List<Note>> fetchNotes() async {
+    try {
+      final guestId = await ref.read(usageServiceProvider).getGuestId();
+      // In a real app, we'd add Auth token here if logged in
+      final response = await http.get(
+        Uri.parse('$_baseUrl/notes'),
+        headers: {
+          'x-guest-id': guestId,
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> json = jsonDecode(response.body);
+        return json.map((m) => Note.fromJson(m)).toList();
+      }
+    } catch (e) {
+      // Fallback to local if API fails
+      return await ref.read(notesRepositoryProvider).list();
+    }
+    return await ref.read(notesRepositoryProvider).list();
+  }
+
+  Future<Note> uploadRecording(String filePath) async {
+    final guestId = await ref.read(usageServiceProvider).getGuestId();
+    final url = Uri.parse('$_baseUrl/notes/upload');
+    
+    final request = http.MultipartRequest('POST', url)
+      ..headers['x-guest-id'] = guestId
+      ..files.add(await http.MultipartFile.fromPath('audio', filePath));
+
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+
+    if (response.statusCode == 201 || response.statusCode == 200) {
+      final noteJson = jsonDecode(response.body);
+      final note = Note.fromJson(noteJson);
+      
+      // Save locally as well for offline
+      await ref.read(notesRepositoryProvider).upsert(note);
+      
+      // Refresh state
+      state = AsyncData(await fetchNotes());
+      return note;
+    } else {
+      final error = jsonDecode(response.body);
+      throw Exception(error['message'] ?? 'Failed to upload recording');
+    }
   }
 
   Future<Note> createEmpty() async {
+
     final now = DateTime.now();
     final note = Note(
       id: _uuid.v4(),

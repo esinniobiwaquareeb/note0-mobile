@@ -1,4 +1,4 @@
-// Note model definition
+import 'dart:convert';
 
 class Note {
   final String id;
@@ -86,17 +86,55 @@ class Note {
     };
   }
 
+  static List<Map<String, dynamic>> _parseList(dynamic data) {
+    if (data == null) return [];
+    if (data is String) {
+      if (data.trim().isEmpty) return [];
+      try {
+        final decoded = jsonDecode(data);
+        if (decoded is List) {
+          return List<Map<String, dynamic>>.from(decoded.map((e) => Map<String, dynamic>.from(e)));
+        }
+      } catch (e) {
+        return [];
+      }
+    }
+    if (data is List) {
+        return List<Map<String, dynamic>>.from(data.map((e) => Map<String, dynamic>.from(e)));
+    }
+    return [];
+  }
+
+  static List<String> _parseStringList(dynamic data) {
+    if (data == null) return [];
+    if (data is String) {
+      if (data.trim().isEmpty) return [];
+      try {
+        final decoded = jsonDecode(data);
+        if (decoded is List) {
+          return List<String>.from(decoded.map((e) => e.toString()));
+        }
+      } catch (e) {
+        return [];
+      }
+    }
+    if (data is List) {
+      return List<String>.from(data.map((e) => e.toString()));
+    }
+    return [];
+  }
+
   factory Note.fromJson(Map<String, dynamic> json) {
     return Note(
       id: json['id'],
       title: json['title'],
       content: json['content'],
       summary: json['summary'] ?? '',
-      keyConcepts: List<Map<String, dynamic>>.from(json['keyConcepts'] ?? []),
-      commonQuestions: List<Map<String, dynamic>>.from(json['commonQuestions'] ?? []),
-      finalThoughts: List<String>.from(json['finalThoughts'] ?? []),
-      actionItems: List<Map<String, dynamic>>.from(json['actionItems'] ?? []),
-      flashcards: List<Map<String, dynamic>>.from(json['flashcards'] ?? []),
+      keyConcepts: _parseList(json['keyConcepts']),
+      commonQuestions: _parseList(json['commonQuestions'] ?? json['quiz']),
+      finalThoughts: _parseStringList(json['finalThoughts']),
+      actionItems: _parseList(json['actionItems']),
+      flashcards: _parseList(json['flashcards']),
       folderId: json['folderId'],
       transcript: json['transcript'] ?? '',
       audioPath: json['audioPath'],
@@ -105,3 +143,4 @@ class Note {
     );
   }
 }
+

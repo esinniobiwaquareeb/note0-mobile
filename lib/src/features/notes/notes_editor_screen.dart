@@ -11,8 +11,8 @@ import 'quiz_screen.dart';
 import 'flashcards_study_screen.dart';
 import 'ai_chat_screen.dart';
 import '../../core/theme/app_theme.dart';
-import '../../data/mock_notes.dart';
 import '../../data/note.dart';
+
 import '../../core/utils/extensions.dart';
 import '../../core/utils/toast_utils.dart';
 
@@ -108,8 +108,8 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
   void _handleAITool(String tool) {
     Navigator.pop(context); // Close sheet
     if (tool == 'Chat') {
-      final note = ref.read(notesControllerProvider).asData?.value.firstWhereOrNull((n) => n.id == widget.noteId) ??
-          MockNotes.list.firstWhereOrNull((n) => n.id == widget.noteId);
+      final note = ref.read(notesControllerProvider).asData?.value.firstWhereOrNull((n) => n.id == widget.noteId);
+
       if (note != null) {
         Navigator.push(context, MaterialPageRoute(builder: (context) => AIChatScreen(note: note)));
       }
@@ -152,8 +152,8 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
   Widget build(BuildContext context) {
     final notesAsync = ref.watch(notesControllerProvider);
     final notes = notesAsync.asData?.value ?? const [];
-    final note = notes.firstWhereOrNull((n) => n.id == widget.noteId) ??
-        MockNotes.list.firstWhereOrNull((n) => n.id == widget.noteId);
+    final note = notes.firstWhereOrNull((n) => n.id == widget.noteId);
+
 
     if (note == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -775,9 +775,10 @@ class _TranscriptContent extends StatelessWidget {
         ),
         const Gap(16),
         Text(
-          note.content.isEmpty ? 'Empty transcript...' : note.content,
+          note.transcript.isEmpty ? 'Empty transcript...' : note.transcript,
           style: TextStyle(fontSize: 16, height: 1.6, color: isDark ? Colors.white : Colors.black87),
         ),
+
       ],
     );
   }

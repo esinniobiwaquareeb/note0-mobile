@@ -6,8 +6,12 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_provider.dart';
+import '../../core/services/auth_service.dart';
+import '../../core/services/usage_service.dart';
 import '../../core/utils/toast_utils.dart';
+import '../auth/login_screen.dart';
 import '../pro/subscription_history_screen.dart';
+
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -61,6 +65,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           _SettingsGroup(
             title: 'Account',
             children: [
+              FutureBuilder<bool>(
+                future: ref.read(authServiceProvider).isAuthenticated(),
+                builder: (context, snapshot) {
+                  final isAuthed = snapshot.data ?? false;
+                  if (isAuthed) return const SizedBox.shrink();
+                  
+                  return _SettingsTile(
+                    icon: Icons.login,
+                    title: 'Log In / Sign Up',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const LoginScreen()),
+                      );
+                    },
+                  );
+                },
+              ),
               _SettingsTile(
                 icon: Icons.history,
                 title: 'Subscription History',
@@ -120,30 +142,39 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const Gap(24),
           _SettingsGroup(
             children: [
-              _SettingsTile(
-                icon: Icons.person_outline,
-                title: 'User ID',
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      '228366D3...',
-                      style: TextStyle(
-                        color: Colors.grey[500],
-                        fontSize: 14,
-                      ),
+              FutureBuilder<String>(
+                future: ref.read(usageServiceProvider).getGuestId(),
+                builder: (context, snapshot) {
+                  final guestId = snapshot.data ?? '...';
+                  final shortId = guestId.length > 8 ? '${guestId.substring(0, 8)}...' : guestId;
+                  
+                  return _SettingsTile(
+                    icon: Icons.person_outline,
+                    title: 'System ID',
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          shortId,
+                          style: TextStyle(
+                            color: Colors.grey[500],
+                            fontSize: 14,
+                          ),
+                        ),
+                        const Gap(8),
+                        Icon(Icons.copy, size: 18, color: Colors.grey[400]),
+                      ],
                     ),
-                    const Gap(8),
-                    Icon(Icons.copy, size: 18, color: Colors.grey[400]),
-                  ],
-                ),
-                onTap: () {
-                  Clipboard.setData(const ClipboardData(text: '228366D3-ABCD-4EFC-8AAB-1234567890AB'));
-                  ToastUtils.showInfo(context, 'User ID copied to clipboard');
+                    onTap: () {
+                      Clipboard.setData(ClipboardData(text: guestId));
+                      ToastUtils.showInfo(context, 'System ID copied to clipboard');
+                    },
+                  );
                 },
               ),
             ],
           ),
+
         ],
       ),
     );

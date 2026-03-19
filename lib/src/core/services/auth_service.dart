@@ -10,11 +10,17 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 final authServiceProvider = Provider((ref) => AuthService());
 
 class AuthService {
-  final GoogleSignIn _googleSignIn = GoogleSignIn(
+  late final String _baseUrl = dotenv.get('API_BASE_URL');
+  late final String _googleClientId = dotenv.get('GOOGLE_CLIENT_ID', fallback: '');
+
+  late final GoogleSignIn _googleSignIn = GoogleSignIn(
+    // On iOS without Firebase, clientId is mandatory
+    clientId: Platform.isIOS && _googleClientId.isNotEmpty ? _googleClientId : null,
+    // Provide serverClientId so backend can verify id token
+    serverClientId: _googleClientId.isNotEmpty ? _googleClientId : null,
     scopes: ['email', 'profile', 'openid'],
   );
 
-  final String _baseUrl = dotenv.get('API_BASE_URL');
 
 
   Future<String> getDeviceId() async {

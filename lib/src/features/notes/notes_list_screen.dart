@@ -17,8 +17,9 @@ import 'folders_controller.dart';
 import 'folder_details_screen.dart';
 import '../onboarding/user_guide_overlay.dart';
 import '../../core/theme/app_theme.dart';
-import '../../data/mock_notes.dart';
 import '../../data/note.dart';
+
+
 
 final showGuideProvider = StateProvider<bool>((ref) => true);
 
@@ -231,61 +232,51 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
                                 ),
                               ),
                               const Gap(16),
-                              ...displayNotes.map(
+                              ...displayNotes.reversed.map(
                                 (note) => Dismissible(
                                   key: Key(note.id),
                                   direction: DismissDirection.horizontal,
                                   background: Container(
                                     alignment: Alignment.centerLeft,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 20,
-                                    ),
+                                    padding: const EdgeInsets.symmetric(horizontal: 20),
                                     color: Colors.blue,
-                                    child: const Icon(
-                                      Icons.drive_file_move_outlined,
-                                      color: Colors.white,
-                                    ),
+                                    child: const Icon(Icons.drive_file_move_outlined, color: Colors.white),
                                   ),
                                   secondaryBackground: Container(
                                     alignment: Alignment.centerRight,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 20,
-                                    ),
+                                    padding: const EdgeInsets.symmetric(horizontal: 20),
                                     color: Colors.red,
-                                    child: const Icon(
-                                      Icons.delete_outline,
-                                      color: Colors.white,
-                                    ),
+                                    child: const Icon(Icons.delete_outline, color: Colors.white),
                                   ),
                                   confirmDismiss: (direction) async {
-                                    if (direction ==
-                                        DismissDirection.endToStart) {
-                                      // Delete
+                                    if (direction == DismissDirection.endToStart) {
                                       return await _confirmDelete(context);
                                     } else {
-                                      // Move
-                                      _showMoveToFolderSheetForNote(
-                                        context,
-                                        note,
-                                      );
+                                      _showMoveToFolderSheetForNote(context, note);
                                       return false;
                                     }
                                   },
                                   onDismissed: (direction) {
-                                    if (direction ==
-                                        DismissDirection.endToStart) {
-                                      ref
-                                          .read(
-                                            notesControllerProvider.notifier,
-                                          )
-                                          .deleteNote(note.id);
+                                    if (direction == DismissDirection.endToStart) {
+                                      ref.read(notesControllerProvider.notifier).deleteNote(note.id);
                                     }
                                   },
                                   child: _NoteTile(note: note),
                                 ),
                               ),
+                              const Gap(24),
+                              FutureBuilder<bool>(
+                                future: ref.read(authServiceProvider).isPro(),
+                                builder: (context, snapshot) {
+                                  if (snapshot.data == true) return const SizedBox.shrink();
+                                  return const _ProUpgradeCard();
+                                },
+                              ),
+                              const Gap(80),
                             ],
                           );
+
+
                         },
                       )
                     : _FoldersView(),
@@ -341,33 +332,29 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
     );
 
     if (path != null) {
-      if (!isPro) {
-        await usageService.incrementRecordingCount();
-      }
+      _showSuccess('Recording completed. Analyzing with AI...');
 
+      try {
+        final note = await ref
+            .read(notesControllerProvider.notifier)
+            .uploadRecording(path);
 
-      _showSuccess('Recording completed. Analyzing...');
-
-      // Create a new note with the audio path
-      final note = await ref
-          .read(notesControllerProvider.notifier)
-          .createEmpty();
-      await ref
-          .read(notesControllerProvider.notifier)
-          .upsert(
-            id: note.id,
-            title: 'New Recording',
-            content:
-                'Audio recording captured at ${DateFormat('HH:mm').format(DateTime.now())}',
-            audioPath: path,
+        if (mounted) {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => NotesEditorScreen(noteId: note.id)),
           );
-
-      if (mounted) {
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => NotesEditorScreen(noteId: note.id)),
-        );
+        }
+      } catch (e) {
+        if (mounted) {
+          if (e.toString().contains('limit reached')) {
+            _showLimitReachedDialog(context);
+          } else {
+            _showError(e.toString());
+          }
+        }
       }
     }
+
   }
 
   void _showLimitReachedDialog(BuildContext context) {
@@ -505,7 +492,20 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
     );
   }
 
+  void _showError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red.shade600,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+
   void _showSuccess(String message) {
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -1280,6 +1280,90 @@ class _MoveToFolderSheetInList extends ConsumerWidget {
             },
           ),
           const Gap(24),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProUpgradeCard extends StatelessWidget {
+  const _ProUpgradeCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: isDark ? AppTheme.darkSurface : Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.blue.withOpacity(0.3)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.blue.withOpacity(isDark ? 0.05 : 0.02),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.star, color: Colors.blue, size: 20),
+              ),
+              const Gap(12),
+              const Text(
+                'Unlock Pro Tools',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const Gap(16),
+          Text(
+            'Get unlimited recordings, advanced AI analysis, and multi-device sync with Note0 Pro.',
+            style: TextStyle(
+              color: isDark ? Colors.white70 : Colors.black54,
+              fontSize: 14,
+              height: 1.5,
+            ),
+          ),
+          const Gap(24),
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: ElevatedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const ProScreen()),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 0,
+              ),
+              child: const Text(
+                'Upgrade Now',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
         ],
       ),
     );
