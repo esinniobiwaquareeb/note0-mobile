@@ -7,11 +7,11 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_provider.dart';
 import '../../core/services/auth_service.dart';
-import '../../core/services/usage_service.dart';
-import '../../core/utils/toast_utils.dart';
+import '../../core/providers/user_provider.dart';
 import '../auth/login_screen.dart';
-import '../pro/subscription_history_screen.dart';
 
+import '../pro/subscription_history_screen.dart';
+import '../pro/pro_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -26,12 +26,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF000000) : const Color(0xFFF8F9FA),
+      backgroundColor: isDark
+          ? const Color(0xFF000000)
+          : const Color(0xFFF8F9FA),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.chevron_left, color: isDark ? Colors.white : Colors.black, size: 28),
+          icon: Icon(
+            Icons.chevron_left,
+            color: isDark ? Colors.white : Colors.black,
+            size: 28,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
@@ -43,8 +49,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ),
       ),
       body: ListView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
         children: [
+          // Profile Header
+          Consumer(
+            builder: (context, ref, _) {
+              final userAsync = ref.watch(userProvider);
+              return userAsync.when(
+                data: (user) => user == null
+                    ? const _GuestProfileHeader()
+                    : _UserProfileHeader(user: user),
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (e, st) => const _GuestProfileHeader(),
+              );
+            },
+          ),
+          const Gap(32),
+
           _SettingsGroup(
             title: 'Appearance',
             children: [
@@ -65,38 +86,92 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           _SettingsGroup(
             title: 'Account',
             children: [
-              FutureBuilder<bool>(
-                future: ref.read(authServiceProvider).isAuthenticated(),
-                builder: (context, snapshot) {
-                  final isAuthed = snapshot.data ?? false;
-                  if (isAuthed) return const SizedBox.shrink();
-                  
-                  return _SettingsTile(
-                    icon: Icons.login,
-                    title: 'Log In / Sign Up',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const LoginScreen()),
+              Consumer(
+                builder: (context, ref, _) {
+                  final userAsync = ref.watch(userProvider);
+                  return userAsync.when(
+                    data: (user) {
+                      if (user == null) {
+                        return _SettingsTile(
+                          icon: Icons.login,
+                          title: 'Log In / Sign Up',
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const LoginScreen(),
+                              ),
+                            );
+                          },
+                        );
+                      }
+
+                      final isPro = user['plan'] == 'Pro';
+                      if (isPro) {
+                        return _SettingsTile(
+                          icon: Icons.auto_awesome,
+                          title: 'Note0 Pro Active',
+                          trailing: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Text(
+                              'PRO',
+                              style: TextStyle(
+                                color: Colors.blue,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+
+                      return _SettingsTile(
+                        icon: Icons.rocket_launch_outlined,
+                        title: 'Upgrade to Pro',
+                        trailing: const Icon(
+                          Icons.chevron_right,
+                          color: Colors.blue,
+                        ),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const ProScreen(),
+                            ),
+                          );
+                        },
                       );
                     },
+                    loading: () => const SizedBox.shrink(),
+                    error: (e, st) => const SizedBox.shrink(),
                   );
                 },
               ),
+
               _SettingsTile(
                 icon: Icons.history,
                 title: 'Subscription History',
                 onTap: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => const SubscriptionHistoryScreen()),
+                    MaterialPageRoute(
+                      builder: (context) => const SubscriptionHistoryScreen(),
+                    ),
                   );
                 },
               ),
               _SettingsTile(
                 icon: Icons.star_outline,
                 title: 'Rate Note0',
-                onTap: () => _launchURL('https://apps.apple.com/app/id6470000000'),
+                onTap: () =>
+                    _launchURL('https://apps.apple.com/app/id6470000000'),
               ),
               _SettingsTile(
                 icon: Icons.share_outlined,
@@ -105,7 +180,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   final box = context.findRenderObject() as RenderBox?;
                   Share.share(
                     'Check out Note0, the best AI note-taking app! https://note0.app',
-                    sharePositionOrigin: box != null ? box.localToGlobal(Offset.zero) & box.size : null,
+                    sharePositionOrigin: box != null
+                        ? box.localToGlobal(Offset.zero) & box.size
+                        : null,
                   );
                 },
               ),
@@ -123,19 +200,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               _SettingsTile(
                 icon: Icons.description_outlined,
                 title: 'Terms of Use',
-                onTap: () => _launchURL('https://note0.app/terms-of-use'),
+                onTap: () => _launchURL('https://note0.app/terms'),
               ),
               _SettingsTile(
                 icon: Icons.security_outlined,
                 title: 'Privacy Policy',
-                onTap: () => _launchURL('https://note0.app/privacy-policy'),
-              ),
-              _SettingsTile(
-                icon: Icons.restore,
-                title: 'Restore Purchase',
-                onTap: () {
-                  ToastUtils.showSuccess(context, 'Purchases restored successfully');
-                },
+                onTap: () => _launchURL('https://note0.app/privacy'),
               ),
             ],
           ),
@@ -143,14 +213,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           _SettingsGroup(
             children: [
               FutureBuilder<String>(
-                future: ref.read(usageServiceProvider).getGuestId(),
+                future: ref.read(authServiceProvider).getDeviceIdPublic(),
                 builder: (context, snapshot) {
-                  final guestId = snapshot.data ?? '...';
-                  final shortId = guestId.length > 8 ? '${guestId.substring(0, 8)}...' : guestId;
-                  
+                  final deviceId = snapshot.data ?? '...';
+                  final shortId = deviceId.length > 12
+                      ? '${deviceId.substring(0, 12)}...'
+                      : deviceId;
+
                   return _SettingsTile(
-                    icon: Icons.person_outline,
-                    title: 'System ID',
+                    icon: Icons.fingerprint,
+                    title: 'Note0 Device ID',
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -166,15 +238,52 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ],
                     ),
                     onTap: () {
-                      Clipboard.setData(ClipboardData(text: guestId));
-                      ToastUtils.showInfo(context, 'System ID copied to clipboard');
+                      Clipboard.setData(ClipboardData(text: deviceId));
+                      _showDeviceIdDialog(context, deviceId);
                     },
                   );
                 },
               ),
             ],
           ),
+          const Gap(32),
+          // Logout Button
+          Consumer(
+            builder: (context, ref, _) {
+              final userAsync = ref.watch(userProvider);
+              return userAsync.when(
+                data: (user) {
+                  if (user == null) return const SizedBox.shrink();
+                  return Center(
+                    child: TextButton(
+                      onPressed: () async {
+                        await ref.read(userProvider.notifier).logout();
+                        if (context.mounted) {
+                          Navigator.of(context).pushAndRemoveUntil(
+                            MaterialPageRoute(
+                              builder: (_) => const LoginScreen(),
+                            ),
+                            (route) => false,
+                          );
+                        }
+                      },
+                      child: const Text(
+                        'Log Out',
+                        style: TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+                loading: () => const SizedBox.shrink(),
+                error: (e, st) => const SizedBox.shrink(),
+              );
+            },
+          ),
 
+          const Gap(40),
         ],
       ),
     );
@@ -189,6 +298,161 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     } catch (e) {
       debugPrint('Could not launch $url : $e');
     }
+  }
+
+  void _showDeviceIdDialog(BuildContext context, String deviceId) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Note0 Device ID'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'This unique identifier ties your grounded history to this specific device for industrial-grade security and session integrity.',
+              style: TextStyle(height: 1.5),
+            ),
+            const Gap(16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: SelectableText(
+                deviceId,
+                style: const TextStyle(fontFamily: 'Courier', fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _UserProfileHeader extends StatelessWidget {
+  const _UserProfileHeader({required this.user});
+  final Map<String, dynamic> user;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final String? avatarUrl = user['avatarUrl'];
+    final String name = user['name'] ?? 'User';
+    final String email = user['email'] ?? '';
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: isDark ? AppTheme.darkSurface : Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.blue.withOpacity(0.1),
+              image: avatarUrl != null
+                  ? DecorationImage(
+                      image: NetworkImage(avatarUrl),
+                      fit: BoxFit.cover,
+                    )
+                  : null,
+            ),
+            child: avatarUrl == null
+                ? const Icon(Icons.person, color: Colors.blue, size: 32)
+                : null,
+          ),
+          const Gap(16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const Gap(2),
+                Text(
+                  email,
+                  style: TextStyle(color: Colors.grey[500], fontSize: 14),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GuestProfileHeader extends StatelessWidget {
+  const _GuestProfileHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: isDark ? AppTheme.darkSurface : Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.grey.withOpacity(0.1),
+            ),
+            child: const Icon(
+              Icons.person_outline,
+              color: Colors.grey,
+              size: 32,
+            ),
+          ),
+          const Gap(16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Note0 Guest',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                ),
+                const Gap(2),
+                Text(
+                  'Sign in to sync your notes',
+                  style: TextStyle(color: Colors.grey[500], fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -221,11 +485,11 @@ class _SettingsGroup extends StatelessWidget {
           decoration: BoxDecoration(
             color: isDark ? AppTheme.darkSurface : Colors.white,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05)),
+            border: Border.all(
+              color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
+            ),
           ),
-          child: Column(
-            children: children,
-          ),
+          child: Column(children: children),
         ),
       ],
     );
@@ -254,7 +518,11 @@ class _SettingsTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         child: Row(
           children: [
-            Icon(icon, color: isDark ? Colors.grey[400] : Colors.grey[600], size: 24),
+            Icon(
+              icon,
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
+              size: 24,
+            ),
             const Gap(16),
             Expanded(
               child: Text(
@@ -266,7 +534,10 @@ class _SettingsTile extends StatelessWidget {
                 ),
               ),
             ),
-            if (trailing != null) trailing! else Icon(Icons.chevron_right, color: Colors.grey[400], size: 20),
+            if (trailing != null)
+              trailing!
+            else
+              Icon(Icons.chevron_right, color: Colors.grey[400], size: 20),
           ],
         ),
       ),

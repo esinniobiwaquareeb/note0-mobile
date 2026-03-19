@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:screen_protector/screen_protector.dart';
+import 'package:flutter/foundation.dart';
 import '../core/theme/app_theme.dart';
 import '../core/theme/theme_provider.dart';
 import '../features/onboarding/splash_screen.dart';
@@ -20,9 +21,11 @@ class _AppState extends ConsumerState<App> {
   }
 
   void _initSecurity() async {
-    await ScreenProtector.preventScreenshotOn();
-    // backgroundScreenOn is likely not in this version, check or remove
+    if (!kIsWeb) {
+      await ScreenProtector.preventScreenshotOn();
+    }
   }
+
 
   @override
   Widget build(BuildContext context) {

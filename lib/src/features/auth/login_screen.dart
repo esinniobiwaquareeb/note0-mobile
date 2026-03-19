@@ -21,7 +21,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     try {
       final authService = ref.read(authServiceProvider);
       final result = await authService.signInWithGoogle();
-      
+
       if (result != null) {
         if (mounted) {
           ToastUtils.showSuccess(context, 'Login Successful');
@@ -88,7 +88,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               ),
               const Gap(12),
               Text(
-                'Industrial Memory System',
+                'Note0 Memory System',
                 style: TextStyle(
                   fontSize: 16,
                   color: isDark ? Colors.white60 : Colors.black54,
@@ -99,11 +99,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               const Text(
                 'Securely access your grounded history and unlock industrial-grade tools.',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 15,
-                  color: Colors.grey,
-                  height: 1.5,
-                ),
+                style: TextStyle(fontSize: 15, color: Colors.grey, height: 1.5),
               ),
               const Gap(32),
               // Google Sign In Button

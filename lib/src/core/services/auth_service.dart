@@ -11,15 +11,16 @@ final authServiceProvider = Provider((ref) => AuthService());
 
 class AuthService {
   late final String _baseUrl = dotenv.get('API_BASE_URL');
-  late final String _googleClientId = dotenv.get('GOOGLE_CLIENT_ID', fallback: '');
+  late final String _googleIosClientId = dotenv.get('GOOGLE_IOS_CLIENT_ID', fallback: '');
+  late final String _googleWebClientId = dotenv.get('GOOGLE_WEB_CLIENT_ID', fallback: '');
+  late final String _googleAndroidClientId = dotenv.get('GOOGLE_ANDROID_CLIENT_ID', fallback: '');
 
   late final GoogleSignIn _googleSignIn = GoogleSignIn(
-    // On iOS without Firebase, clientId is mandatory
-    clientId: Platform.isIOS && _googleClientId.isNotEmpty ? _googleClientId : null,
-    // Provide serverClientId so backend can verify id token
-    serverClientId: _googleClientId.isNotEmpty ? _googleClientId : null,
+    clientId: Platform.isIOS ? _googleIosClientId : (Platform.isAndroid ? _googleAndroidClientId : null),
+    serverClientId: _googleWebClientId,
     scopes: ['email', 'profile', 'openid'],
   );
+
 
 
 
@@ -37,12 +38,24 @@ class AuthService {
 
   Future<Map<String, dynamic>?> signInWithGoogle() async {
     try {
+      print('AuthService: Starting Google Sign-In...');
+      print('AuthService: Client ID (iOS): $_googleIosClientId');
+      print('AuthService: Server Client ID: $_googleWebClientId');
+      
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-      if (googleUser == null) return null;
+      if (googleUser == null) {
+        print('AuthService: Google Sign-In cancelled by user or failed.');
+        return null;
+      }
 
+      print('AuthService: Google Sign-In successful: ${googleUser.email}');
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      print('AuthService: Obtained authentication tokens.');
+      
       final deviceId = await getDeviceId();
+      print('AuthService: Device ID: $deviceId');
 
+      print('AuthService: Exchanging token with backend at: $_baseUrl/auth/google/verify');
       // Exchange Google ID Token for backend JWT
       final response = await http.post(
         Uri.parse('$_baseUrl/auth/google/verify'),
@@ -53,36 +66,41 @@ class AuthService {
           'token': googleAuth.idToken,
           'deviceId': deviceId,
         }),
-      );
+      ).timeout(const Duration(seconds: 30));
 
+      print('AuthService: Backend response: ${response.statusCode}');
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = jsonDecode(response.body);
         await _saveAuthData(data);
+        print('AuthService: Authentication complete (User: ${data['user']['name']}, Avatar: ${data['user']['avatarUrl']})');
         return data;
       } else {
+
+        print('AuthService: Backend authentication failed: ${response.body}');
         throw Exception('Failed to authenticate with backend: ${response.body}');
       }
     } catch (e) {
-      print('Google Sign-In Error: $e');
-      return null;
+      print('AuthService: Google Sign-In Error: $e');
+      rethrow; // Rethrow to let the UI catch and show the error
     }
   }
 
+
   Future<void> _saveAuthData(Map<String, dynamic> data) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('access_token', data['access_token']);
+    await prefs.setString('token', data['access_token']);
     await prefs.setString('user_data', jsonEncode(data['user']));
   }
 
   Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('access_token');
+    return prefs.getString('token');
   }
 
-  Future<void> signOut() async {
+  Future<void> logout() async {
     await _googleSignIn.signOut();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('access_token');
+    await prefs.remove('token');
     await prefs.remove('user_data');
   }
 
@@ -104,5 +122,8 @@ class AuthService {
     final token = await getToken();
     return token != null;
   }
+
+  Future<String> getDeviceIdPublic() => getDeviceId();
 }
+
 

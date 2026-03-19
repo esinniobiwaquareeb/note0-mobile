@@ -5,7 +5,9 @@ import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../core/utils/toast_utils.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/providers/user_provider.dart';
 import '../../core/services/usage_service.dart';
+
 import 'notes_controller.dart';
 import 'notes_editor_screen.dart';
 import 'settings_screen.dart';
@@ -106,23 +108,49 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
               });
             },
           ),
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: InkWell(
-              onTap: () => Navigator.of(
-                context,
-              ).push(MaterialPageRoute(builder: (_) => const SettingsScreen())),
-              child: CircleAvatar(
-                backgroundColor: isDark ? Colors.white12 : Colors.grey[200],
-                maxRadius: 18,
-                child: Icon(
-                  Icons.person_outline,
-                  color: isDark ? Colors.white : Colors.black54,
-                  size: 20,
+          Consumer(
+            builder: (context, ref, _) {
+              final userAsync = ref.watch(userProvider);
+              return userAsync.when(
+                data: (user) {
+                  final avatarUrl = user?['avatarUrl'];
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 16),
+                    child: InkWell(
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                      ),
+                      child: CircleAvatar(
+                        backgroundColor: isDark ? Colors.white12 : Colors.grey[200],
+                        maxRadius: 18,
+                        backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
+                        child: avatarUrl == null
+                            ? Icon(
+                                Icons.person_outline,
+                                color: isDark ? Colors.white : Colors.black54,
+                                size: 20,
+                              )
+                            : null,
+                      ),
+                    ),
+                  );
+                },
+                loading: () => const Padding(
+                  padding: EdgeInsets.only(right: 16),
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
                 ),
-              ),
-            ),
+                error: (e, st) => const Padding(
+                  padding: EdgeInsets.only(right: 16),
+                  child: Icon(Icons.error_outline, size: 24, color: Colors.red),
+                ),
+              );
+            },
           ),
+
         ],
       ),
       body: Stack(

@@ -126,9 +126,10 @@ class Note {
 
   factory Note.fromJson(Map<String, dynamic> json) {
     return Note(
-      id: json['id'],
-      title: json['title'],
-      content: json['content'],
+      id: json['id'] ?? '',
+      title: json['title'] ?? '',
+      content: json['content'] ?? '',
+
       summary: json['summary'] ?? '',
       keyConcepts: _parseList(json['keyConcepts']),
       commonQuestions: _parseList(json['commonQuestions'] ?? json['quiz']),
