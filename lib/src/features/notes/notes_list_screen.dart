@@ -46,10 +46,34 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
     super.dispose();
   }
 
+  Future<void> _scanDocument() async {
+    try {
+      final documentScanner = DocumentScanner(
+        options: DocumentScannerOptions(
+          documentFormat: DocumentFormat.jpeg,
+          mode: ScannerMode.full,
+        ),
+      );
+
+
+      final result = await documentScanner.scanDocument();
+      if (result.images.isNotEmpty) {
+        // Upload the first image (or handle multiple if needed later)
+        final path = result.images.first;
+        await ref.read(notesControllerProvider.notifier).uploadScan(path);
+        ToastUtils.showSuccess(context, 'Document scanned and analyzed');
+      }
+    } catch (e) {
+      if (e.toString().contains('cancelled')) return;
+      ToastUtils.showError(context, 'Scanning failed: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final notesAsync = ref.watch(notesControllerProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+
 
     return Scaffold(
       backgroundColor: isDark
@@ -347,7 +371,9 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
         onRecord: _startRecording,
         onUpload: _uploadFile,
         onYouTube: () => _processYouTube(context),
+        onScan: _scanDocument,
       ),
+
     );
   }
 
@@ -1107,11 +1133,14 @@ class _NewNoteSheet extends StatelessWidget {
     required this.onRecord,
     required this.onUpload,
     required this.onYouTube,
+    required this.onScan,
   });
 
   final VoidCallback onRecord;
   final VoidCallback onUpload;
   final VoidCallback onYouTube;
+  final VoidCallback onScan;
+
 
   @override
   Widget build(BuildContext context) {
@@ -1138,6 +1167,18 @@ class _NewNoteSheet extends StatelessWidget {
           ),
           const Gap(24),
           _NewNoteOption(
+            icon: Icons.document_scanner_outlined,
+            iconColor: Colors.purple,
+            iconBg: Colors.purple.withOpacity(0.1),
+            title: 'Scan Note',
+            subtitle: 'Professional document scanning',
+            onTap: () {
+              Navigator.pop(context);
+              onScan();
+            },
+          ),
+          const Gap(16),
+          _NewNoteOption(
             icon: Icons.mic_none,
             iconColor: Colors.blue,
             iconBg: Colors.blue.withOpacity(0.1),
@@ -1148,6 +1189,7 @@ class _NewNoteSheet extends StatelessWidget {
               onRecord();
             },
           ),
+
           const Gap(16),
           _NewNoteOption(
             icon: Icons.upload_file_outlined,
