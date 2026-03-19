@@ -21,6 +21,8 @@ class ProScreen extends ConsumerStatefulWidget {
 class _ProScreenState extends ConsumerState<ProScreen> {
   List<dynamic> _plans = [];
   bool _isLoading = true;
+  bool _isProcessing = false;
+
 
   @override
   void initState() {
@@ -47,6 +49,8 @@ class _ProScreenState extends ConsumerState<ProScreen> {
   }
 
   Future<void> _initializeSubscription(String planName) async {
+    if (_isProcessing) return;
+    
     final authService = ref.read(authServiceProvider);
     final token = await authService.getToken();
 
@@ -57,6 +61,7 @@ class _ProScreenState extends ConsumerState<ProScreen> {
       return;
     }
 
+    setState(() => _isProcessing = true);
     try {
       final baseUrl = dotenv.get('API_BASE_URL');
       final response = await http.post(
@@ -80,15 +85,19 @@ class _ProScreenState extends ConsumerState<ProScreen> {
           );
         }
       } else {
-
         throw Exception('Failed to initialize subscription');
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -141,8 +150,10 @@ class _ProScreenState extends ConsumerState<ProScreen> {
                       return _PlanCard(
                         plan: plan,
                         isPremium: isPremium,
+                        isProcessing: _isProcessing,
                         onTap: () => _initializeSubscription(plan['name']),
                       );
+
                     },
                   ),
                 ),
@@ -160,10 +171,17 @@ class _ProScreenState extends ConsumerState<ProScreen> {
 }
 
 class _PlanCard extends StatelessWidget {
-  const _PlanCard({required this.plan, required this.isPremium, required this.onTap});
+  const _PlanCard({
+    required this.plan,
+    required this.isPremium,
+    required this.onTap,
+    required this.isProcessing,
+  });
   final dynamic plan;
   final bool isPremium;
+  final bool isProcessing;
   final VoidCallback onTap;
+
 
   @override
   Widget build(BuildContext context) {
@@ -239,7 +257,15 @@ class _PlanCard extends StatelessWidget {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                       elevation: 0,
                     ),
-                    child: const Text('Get Started', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    child: isProcessing 
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Text('Get Started', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+
+
                   ),
                 ),
               ],

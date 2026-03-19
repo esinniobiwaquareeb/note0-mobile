@@ -12,6 +12,8 @@ import '../auth/login_screen.dart';
 
 import '../pro/subscription_history_screen.dart';
 import '../pro/pro_screen.dart';
+import '../pro/payment_webview.dart';
+
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -21,14 +23,97 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  bool _isLoggingOut = false;
+
+  Future<void> _logout() async {
+    setState(() => _isLoggingOut = true);
+    try {
+      await ref.read(userProvider.notifier).logout();
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (route) => false,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoggingOut = false);
+    }
+  }
+
+  void _openWebView(String url, String title) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          appBar: AppBar(
+            title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+            elevation: 0,
+            backgroundColor: Colors.transparent,
+            leading: IconButton(
+              icon: const Icon(Icons.close),
+              onPressed: () => Navigator.pop(context),
+            ),
+          ),
+          body: PaymentWebView(url: url, isPayment: false),
+        ),
+      ),
+    );
+  }
+
+  void _showDeviceIdDialog(BuildContext context, String deviceId) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Note0 Device ID'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'This unique identifier ties your grounded history to this specific device for industrial-grade security and session integrity.',
+              style: TextStyle(height: 1.5),
+            ),
+            const Gap(16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: SelectableText(
+                deviceId,
+                style: const TextStyle(fontFamily: 'Courier', fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _launchURL(String url) async {
+    final uri = Uri.parse(url);
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+    } catch (e) {
+      debugPrint('Could not launch $url : $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark
-          ? const Color(0xFF000000)
-          : const Color(0xFFF8F9FA),
+      backgroundColor: isDark ? const Color(0xFF000000) : const Color(0xFFF8F9FA),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -200,12 +285,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               _SettingsTile(
                 icon: Icons.description_outlined,
                 title: 'Terms of Use',
-                onTap: () => _launchURL('https://note0.app/terms'),
+                onTap: () => _openWebView('https://note0.app/terms', 'Terms of Use'),
               ),
               _SettingsTile(
                 icon: Icons.security_outlined,
                 title: 'Privacy Policy',
-                onTap: () => _launchURL('https://note0.app/privacy'),
+                onTap: () => _openWebView('https://note0.app/privacy', 'Privacy Policy'),
               ),
             ],
           ),
@@ -256,24 +341,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   if (user == null) return const SizedBox.shrink();
                   return Center(
                     child: TextButton(
-                      onPressed: () async {
-                        await ref.read(userProvider.notifier).logout();
-                        if (context.mounted) {
-                          Navigator.of(context).pushAndRemoveUntil(
-                            MaterialPageRoute(
-                              builder: (_) => const LoginScreen(),
+                      onPressed: _isLoggingOut ? null : _logout,
+                      child: _isLoggingOut
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation(Colors.red),
+                              ),
+                            )
+                          : const Text(
+                              'Log Out',
+                              style: TextStyle(
+                                color: Colors.red,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                            (route) => false,
-                          );
-                        }
-                      },
-                      child: const Text(
-                        'Log Out',
-                        style: TextStyle(
-                          color: Colors.red,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
                     ),
                   );
                 },
@@ -282,61 +366,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               );
             },
           ),
-
           const Gap(40),
         ],
       ),
     );
   }
-
-  Future<void> _launchURL(String url) async {
-    final uri = Uri.parse(url);
-    try {
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      }
-    } catch (e) {
-      debugPrint('Could not launch $url : $e');
-    }
-  }
-
-  void _showDeviceIdDialog(BuildContext context, String deviceId) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Note0 Device ID'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'This unique identifier ties your grounded history to this specific device for industrial-grade security and session integrity.',
-              style: TextStyle(height: 1.5),
-            ),
-            const Gap(16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: SelectableText(
-                deviceId,
-                style: const TextStyle(fontFamily: 'Courier', fontSize: 13),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
 }
+
 
 class _UserProfileHeader extends StatelessWidget {
   const _UserProfileHeader({required this.user});

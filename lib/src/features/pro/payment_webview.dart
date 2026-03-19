@@ -6,12 +6,15 @@ import '../../core/providers/user_provider.dart';
 class PaymentWebView extends ConsumerStatefulWidget {
   final String url;
   final String successUrl;
+  final bool isPayment;
 
   const PaymentWebView({
     super.key,
     required this.url,
     this.successUrl = 'https://note0.app/payment-success',
+    this.isPayment = true,
   });
+
 
   @override
   ConsumerState<PaymentWebView> createState() => _PaymentWebViewState();
@@ -34,17 +37,18 @@ class _PaymentWebViewState extends ConsumerState<PaymentWebView> {
           onPageFinished: (String url) {
             setState(() => _isLoading = false);
             // Check if the URL is the success URL
-            if (url.contains('success') || url.contains(widget.successUrl)) {
+            if (widget.isPayment && (url.contains('success') || url.contains(widget.successUrl))) {
               _handleSuccess();
             }
           },
           onNavigationRequest: (NavigationRequest request) {
-            if (request.url.contains('success') || request.url.contains(widget.successUrl)) {
+            if (widget.isPayment && (request.url.contains('success') || request.url.contains(widget.successUrl))) {
               _handleSuccess();
               return NavigationDecision.prevent;
             }
             return NavigationDecision.navigate;
           },
+
         ),
       )
       ..loadRequest(Uri.parse(widget.url));
@@ -77,15 +81,18 @@ class _PaymentWebViewState extends ConsumerState<PaymentWebView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Complete Payment'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () => _controller.reload(),
-          ),
-        ],
-      ),
+      appBar: widget.isPayment 
+        ? AppBar(
+            title: const Text('Complete Payment'),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.refresh),
+                onPressed: () => _controller.reload(),
+              ),
+            ],
+          )
+        : null,
+
       body: Stack(
         children: [
           WebViewWidget(controller: _controller),

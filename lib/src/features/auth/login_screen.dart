@@ -143,12 +143,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               ),
               const Gap(16),
               TextButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: _isLoading ? null : () {
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (_) => const NotesListScreen()),
+                    (route) => false,
+                  );
+                },
                 child: const Text(
                   'Continue as Guest',
                   style: TextStyle(color: Colors.grey),
                 ),
               ),
+
               const Gap(40),
             ],
           ),
