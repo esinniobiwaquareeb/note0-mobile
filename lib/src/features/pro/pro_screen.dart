@@ -52,14 +52,23 @@ class _ProScreenState extends ConsumerState<ProScreen> {
     if (_isProcessing) return;
     
     final authService = ref.read(authServiceProvider);
-    final token = await authService.getToken();
+    var token = await authService.getToken();
+
+    // If token is null, wait a brief moment and retry once (to handle SharedPreferences write latency)
+    if (token == null) {
+      await Future.delayed(const Duration(milliseconds: 500));
+      token = await authService.getToken();
+    }
 
     if (token == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please login to subscribe')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please login to subscribe')),
+        );
+      }
       return;
     }
+
 
     setState(() => _isProcessing = true);
     try {

@@ -424,8 +424,11 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
                     final authService = ref.read(authServiceProvider);
                     final result = await authService.signInWithGoogle();
                     if (result != null && mounted) {
+                      ref.read(userProvider.notifier).setUser(result['user']);
                       _showSuccess('Welcome to Note0!');
+                      Navigator.pop(context);
                     }
+
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue,

@@ -4,7 +4,9 @@ import 'package:gap/gap.dart';
 import '../../core/services/auth_service.dart';
 
 import '../../core/utils/toast_utils.dart';
+import '../../core/providers/user_provider.dart';
 import '../notes/notes_list_screen.dart';
+
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -24,12 +26,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
       if (result != null) {
         if (mounted) {
+          ref.read(userProvider.notifier).setUser(result['user']);
           ToastUtils.showSuccess(context, 'Login Successful');
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (_) => const NotesListScreen()),
             (route) => false,
           );
         }
+
       } else {
         if (mounted) {
           ToastUtils.showError(context, 'Login Cancelled');

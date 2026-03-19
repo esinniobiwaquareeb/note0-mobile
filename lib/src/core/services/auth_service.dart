@@ -94,8 +94,11 @@ class AuthService {
 
   Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('token');
+    final token = prefs.getString('token');
+    print('AuthService: getToken() returning ${token != null ? "a token" : "null"}');
+    return token;
   }
+
 
   Future<void> logout() async {
     await _googleSignIn.signOut();
