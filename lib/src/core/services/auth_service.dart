@@ -153,6 +153,30 @@ class AuthService {
   }
 
   Future<String> getDeviceIdPublic() => getDeviceId();
+
+  Future<void> deleteAccount() async {
+    try {
+      final token = await getToken();
+      if (token == null) return;
+
+      final response = await http.delete(
+        Uri.parse('$_baseUrl/auth/account'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        await logout();
+      } else {
+        throw Exception('Failed to delete account: ${response.body}');
+      }
+    } catch (e) {
+      print('AuthService: deleteAccount failed: $e');
+      rethrow;
+    }
+  }
 }
 
 

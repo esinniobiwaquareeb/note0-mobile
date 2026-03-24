@@ -339,26 +339,44 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               return userAsync.when(
                 data: (user) {
                   if (user == null) return const SizedBox.shrink();
-                  return Center(
-                    child: TextButton(
-                      onPressed: _isLoggingOut ? null : _logout,
-                      child: _isLoggingOut
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation(Colors.red),
-                              ),
-                            )
-                          : const Text(
-                              'Log Out',
-                              style: TextStyle(
-                                color: Colors.red,
-                                fontWeight: FontWeight.bold,
-                              ),
+                  return Column(
+                    children: [
+                      Center(
+                        child: TextButton(
+                          onPressed: _isLoggingOut ? null : _logout,
+                          child: _isLoggingOut
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation(Colors.red),
+                                  ),
+                                )
+                              : const Text(
+                                  'Log Out',
+                                  style: TextStyle(
+                                    color: Colors.red,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                        ),
+                      ),
+                      const Gap(8),
+                      Center(
+                        child: TextButton(
+                          onPressed: () => _showDeleteAccountConfirm(context),
+                          child: Text(
+                            'Delete Account',
+                            style: TextStyle(
+                              color: Colors.red.withOpacity(0.6),
+                              fontSize: 13,
+                              decoration: TextDecoration.underline,
                             ),
-                    ),
+                          ),
+                        ),
+                      ),
+                    ],
                   );
                 },
                 loading: () => const SizedBox.shrink(),
@@ -370,6 +388,53 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ],
       ),
     );
+  }
+
+  void _showDeleteAccountConfirm(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Account?'),
+        content: const Text(
+          'This action is permanent. All your notes, flashcards, and subscription data will be permanently erased. This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context); // Close dialog
+              _performDeleteAccount();
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete Permanently'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _performDeleteAccount() async {
+    setState(() => _isLoggingOut = true);
+    try {
+      await ref.read(authServiceProvider).deleteAccount();
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (route) => false,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to delete account: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoggingOut = false);
+    }
   }
 }
 
