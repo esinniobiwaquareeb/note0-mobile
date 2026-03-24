@@ -116,6 +116,32 @@ class AuthService {
     return null;
   }
 
+  Future<Map<String, dynamic>?> fetchProfile() async {
+    try {
+      final token = await getToken();
+      if (token == null) return null;
+
+      final response = await http.get(
+        Uri.parse('$_baseUrl/auth/profile'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        final userData = jsonDecode(response.body);
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('user_data', jsonEncode(userData));
+        return userData;
+      }
+      return null;
+    } catch (e) {
+      print('AuthService: fetchProfile failed: $e');
+      return null;
+    }
+  }
+
   Future<bool> isPro() async {
     final user = await getUser();
     return user != null && user['plan'] == 'Pro';

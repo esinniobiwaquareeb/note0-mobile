@@ -7,7 +7,6 @@ import '../../core/utils/toast_utils.dart';
 import '../../core/providers/user_provider.dart';
 import '../notes/notes_list_screen.dart';
 
-
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
@@ -33,7 +32,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             (route) => false,
           );
         }
-
       } else {
         if (mounted) {
           ToastUtils.showError(context, 'Login Cancelled');
@@ -69,15 +67,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   color: isDark ? Colors.white10 : Colors.black,
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: const Center(
-                  child: Text(
-                    '0',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 40,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
+                child: Image.asset(
+                  'assets/images/app_icon.png',
+                  width: 120,
+                  height: 120,
                 ),
               ),
               const Gap(32),
@@ -147,12 +140,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               ),
               const Gap(16),
               TextButton(
-                onPressed: _isLoading ? null : () {
-                  Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (_) => const NotesListScreen()),
-                    (route) => false,
-                  );
-                },
+                onPressed: _isLoading
+                    ? null
+                    : () {
+                        Navigator.of(context).pushAndRemoveUntil(
+                          MaterialPageRoute(
+                            builder: (_) => const NotesListScreen(),
+                          ),
+                          (route) => false,
+                        );
+                      },
                 child: const Text(
                   'Continue as Guest',
                   style: TextStyle(color: Colors.grey),

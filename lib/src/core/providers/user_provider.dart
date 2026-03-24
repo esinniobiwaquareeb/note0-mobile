@@ -13,12 +13,29 @@ class UserNotifier extends StateNotifier<AsyncValue<Map<String, dynamic>?>> {
   }
 
   Future<void> refreshUser() async {
-    state = const AsyncValue.loading();
+    if (state.value == null) {
+      state = const AsyncValue.loading();
+    }
+    
     try {
-      final user = await _authService.getUser();
-      state = AsyncValue.data(user);
+      // Try fetching latest from backend
+      final user = await _authService.fetchProfile();
+      if (user != null) {
+        state = AsyncValue.data(user);
+        return;
+      }
+      
+      // Fallback to local if fetch returns null (e.g. no token)
+      final localUser = await _authService.getUser();
+      state = AsyncValue.data(localUser);
     } catch (e, st) {
-      state = AsyncValue.error(e, st);
+      // If error occurs (e.g. network), fallback to what we have or error
+      final localUser = await _authService.getUser();
+      if (localUser != null) {
+        state = AsyncValue.data(localUser);
+      } else {
+        state = AsyncValue.error(e, st);
+      }
     }
   }
 
