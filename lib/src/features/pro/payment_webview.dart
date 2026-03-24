@@ -54,9 +54,14 @@ class _PaymentWebViewState extends ConsumerState<PaymentWebView> {
       ..loadRequest(Uri.parse(widget.url));
   }
 
-  void _handleSuccess() {
+  void _handleSuccess() async {
+    // Add a slight delay to allow the backend webhook to process the transaction
+    await Future.delayed(const Duration(seconds: 2));
+    
     // Refresh user state to reflect Pro status
-    ref.read(userProvider.notifier).refreshUser();
+    if (mounted) {
+      await ref.read(userProvider.notifier).refreshUser();
+    }
     
     // Show success dialog
     showDialog(

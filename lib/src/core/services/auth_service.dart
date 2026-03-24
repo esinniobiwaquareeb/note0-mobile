@@ -144,7 +144,9 @@ class AuthService {
 
   Future<bool> isPro() async {
     final user = await getUser();
-    return user != null && user['plan'] == 'Pro';
+    if (user == null) return false;
+    final plan = user['plan']?.toString() ?? 'Free';
+    return plan != 'Free' && plan != 'Guest';
   }
 
   Future<bool> isAuthenticated() async {
