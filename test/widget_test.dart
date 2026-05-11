@@ -5,6 +5,7 @@ import 'package:note0/src/app/app.dart';
 void main() {
   testWidgets('App boots', (WidgetTester tester) async {
     await tester.pumpWidget(const ProviderScope(child: App()));
-    expect(find.text('Notes'), findsOneWidget);
+    expect(find.text('Note0'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 3));
   });
 }

@@ -2,17 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/providers/user_provider.dart';
+import '../../core/services/subscription_service.dart';
 
 class PaymentWebView extends ConsumerStatefulWidget {
   final String url;
   final String successUrl;
   final bool isPayment;
+  final String? reference;
 
   const PaymentWebView({
     super.key,
     required this.url,
     this.successUrl = 'https://note0.app/payment-success',
     this.isPayment = true,
+    this.reference,
   });
 
 
@@ -55,8 +58,12 @@ class _PaymentWebViewState extends ConsumerState<PaymentWebView> {
   }
 
   void _handleSuccess() async {
-    // Add a slight delay to allow the backend webhook to process the transaction
-    await Future.delayed(const Duration(seconds: 2));
+    if (widget.reference != null && widget.reference!.isNotEmpty) {
+      await ref.read(subscriptionServiceProvider).verifyPayment(widget.reference!);
+    } else {
+      // Fallback if we somehow lost the provider reference
+      await Future.delayed(const Duration(seconds: 2));
+    }
     
     // Refresh user state to reflect Pro status
     if (mounted) {

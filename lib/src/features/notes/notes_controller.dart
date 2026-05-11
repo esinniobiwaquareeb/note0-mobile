@@ -8,6 +8,7 @@ import '../../data/note.dart';
 import '../../data/notes_repository.dart';
 import '../../core/utils/extensions.dart';
 import '../../core/services/usage_service.dart';
+import '../../core/services/auth_service.dart';
 
 final encryptedStoreProvider = Provider<EncryptedFileStore>((ref) {
   return EncryptedFileStore();
@@ -37,12 +38,11 @@ class NotesController extends AsyncNotifier<List<Note>> {
   Future<List<Note>> fetchNotes() async {
     try {
       final guestId = await ref.read(usageServiceProvider).getGuestId();
-      // In a real app, we'd add Auth token here if logged in
+      final headers = await ref.read(authServiceProvider).getAuthHeaders();
+      headers['x-guest-id'] = guestId;
       final response = await http.get(
         Uri.parse('$_baseUrl/notes'),
-        headers: {
-          'x-guest-id': guestId,
-        },
+        headers: headers,
       );
 
       if (response.statusCode == 200) {
@@ -64,7 +64,9 @@ class NotesController extends AsyncNotifier<List<Note>> {
     ref.read(isAnalyzingProvider.notifier).state = true;
     
     try {
+      final authHeaders = await ref.read(authServiceProvider).getAuthHeaders();
       final request = http.MultipartRequest('POST', url)
+        ..headers.addAll(authHeaders)
         ..headers['x-guest-id'] = guestId
         ..files.add(await http.MultipartFile.fromPath('audio', filePath));
 
@@ -97,7 +99,9 @@ class NotesController extends AsyncNotifier<List<Note>> {
     ref.read(isAnalyzingProvider.notifier).state = true;
     
     try {
+      final authHeaders = await ref.read(authServiceProvider).getAuthHeaders();
       final request = http.MultipartRequest('POST', url)
+        ..headers.addAll(authHeaders)
         ..headers['x-guest-id'] = guestId
         ..files.add(await http.MultipartFile.fromPath('image', filePath));
 

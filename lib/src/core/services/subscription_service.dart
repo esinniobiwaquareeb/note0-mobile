@@ -13,16 +13,13 @@ class SubscriptionService {
   String get _baseUrl => dotenv.get('API_BASE_URL', fallback: 'http://localhost:3000/v1');
 
   Future<List<Map<String, dynamic>>> fetchHistory() async {
-    final token = await _authService.getToken();
-    if (token == null) return [];
+    final headers = await _authService.getAuthHeaders(json: true);
+    if (!headers.containsKey('Authorization')) return [];
 
     try {
       final response = await http.get(
         Uri.parse('$_baseUrl/subscriptions/history'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
+        headers: headers,
       ).timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
@@ -36,16 +33,13 @@ class SubscriptionService {
   }
 
   Future<Map<String, dynamic>?> fetchCurrentStatus() async {
-    final token = await _authService.getToken();
-    if (token == null) return null;
+    final headers = await _authService.getAuthHeaders(json: true);
+    if (!headers.containsKey('Authorization')) return null;
 
     try {
       final response = await http.get(
         Uri.parse('$_baseUrl/subscriptions/status'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
+        headers: headers,
       ).timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
@@ -53,6 +47,28 @@ class SubscriptionService {
       }
     } catch (e) {
       print('SubscriptionService: fetchCurrentStatus failed: $e');
+    }
+    return null;
+  }
+
+  Future<Map<String, dynamic>?> verifyPayment(String reference) async {
+    final headers = await _authService.getAuthHeaders(json: true);
+    if (!headers.containsKey('Authorization')) return null;
+
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/subscriptions/verify'),
+        headers: headers,
+        body: jsonEncode({
+          'reference': reference,
+        }),
+      ).timeout(const Duration(seconds: 20));
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      print('SubscriptionService: verifyPayment failed: $e');
     }
     return null;
   }

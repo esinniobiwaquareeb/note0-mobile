@@ -85,11 +85,12 @@ class _ProScreenState extends ConsumerState<ProScreen> {
       if (response.statusCode == 201 || response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final url = data['paymentUrl'];
+        final reference = data['reference']?.toString();
         if (mounted) {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => PaymentWebView(url: url),
+              builder: (_) => PaymentWebView(url: url, reference: reference),
             ),
           );
         }
@@ -105,6 +106,14 @@ class _ProScreenState extends ConsumerState<ProScreen> {
     } finally {
       if (mounted) setState(() => _isProcessing = false);
     }
+  }
+
+  String _planIdentifier(dynamic plan) {
+    final id = plan['id']?.toString();
+    if (id != null && id.isNotEmpty) {
+      return id;
+    }
+    return plan['name'].toString();
   }
 
 
@@ -160,7 +169,7 @@ class _ProScreenState extends ConsumerState<ProScreen> {
                         plan: plan,
                         isPremium: isPremium,
                         isProcessing: _isProcessing,
-                        onTap: () => _initializeSubscription(plan['name']),
+                        onTap: () => _initializeSubscription(_planIdentifier(plan)),
                       );
 
                     },
@@ -307,4 +316,3 @@ class _BenefitItem extends StatelessWidget {
     );
   }
 }
-

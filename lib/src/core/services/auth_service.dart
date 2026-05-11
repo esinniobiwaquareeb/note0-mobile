@@ -99,6 +99,18 @@ class AuthService {
     return token;
   }
 
+  Future<Map<String, String>> getAuthHeaders({bool json = false}) async {
+    final headers = <String, String>{};
+    final token = await getToken();
+    if (token != null) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+    if (json) {
+      headers['Content-Type'] = 'application/json';
+    }
+    return headers;
+  }
+
 
   Future<void> logout() async {
     await _googleSignIn.signOut();
@@ -180,5 +192,4 @@ class AuthService {
     }
   }
 }
-
 

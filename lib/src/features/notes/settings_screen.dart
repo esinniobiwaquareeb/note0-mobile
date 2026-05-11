@@ -191,11 +191,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         );
                       }
 
-                      final isPro = user['plan'] == 'Pro';
-                      if (isPro) {
+                      final plan = (user['plan'] ?? 'Free').toString();
+                      final hasPaidPlan = plan != 'Free' && plan != 'Guest';
+                      if (hasPaidPlan) {
                         return _SettingsTile(
                           icon: Icons.auto_awesome,
-                          title: 'Note0 Pro Active',
+                          title: '$plan Active',
                           trailing: Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 10,
@@ -206,7 +207,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: const Text(
-                              'PRO',
+                              'ACTIVE',
                               style: TextStyle(
                                 color: Colors.blue,
                                 fontWeight: FontWeight.bold,
@@ -219,7 +220,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
                       return _SettingsTile(
                         icon: Icons.rocket_launch_outlined,
-                        title: 'Upgrade to Pro',
+                        title: 'Upgrade your plan',
                         trailing: const Icon(
                           Icons.chevron_right,
                           color: Colors.blue,

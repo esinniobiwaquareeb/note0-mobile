@@ -68,6 +68,7 @@ class _SubscriptionHistoryScreenState extends ConsumerState<SubscriptionHistoryS
                 final date = DateTime.parse(sub['createdAt']);
                 final amount = sub['amount'];
                 final plan = sub['plan'];
+                final status = (sub['status'] ?? 'Unknown').toString();
                 
                 return Container(
                   margin: const EdgeInsets.only(bottom: 16),
@@ -82,10 +83,15 @@ class _SubscriptionHistoryScreenState extends ConsumerState<SubscriptionHistoryS
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: Colors.blue.withOpacity(0.1),
+                          color: status == 'Active'
+                              ? Colors.blue.withOpacity(0.1)
+                              : Colors.orange.withOpacity(0.1),
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.check_circle, color: Colors.blue),
+                        child: Icon(
+                          status == 'Active' ? Icons.check_circle : Icons.schedule,
+                          color: status == 'Active' ? Colors.blue : Colors.orange,
+                        ),
                       ),
                       const Gap(16),
                       Expanded(
@@ -100,6 +106,15 @@ class _SubscriptionHistoryScreenState extends ConsumerState<SubscriptionHistoryS
                             Text(
                               DateFormat('MMM dd, yyyy').format(date),
                               style: TextStyle(color: Colors.grey[500], fontSize: 13),
+                            ),
+                            const Gap(4),
+                            Text(
+                              status,
+                              style: TextStyle(
+                                color: status == 'Active' ? Colors.blue : Colors.orange,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ],
                         ),
@@ -116,4 +131,3 @@ class _SubscriptionHistoryScreenState extends ConsumerState<SubscriptionHistoryS
     );
   }
 }
-
