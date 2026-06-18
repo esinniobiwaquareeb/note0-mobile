@@ -12,6 +12,8 @@ class Note {
   final List<Map<String, dynamic>> flashcards;
   final String? folderId;
   final String transcript;
+  // audioPath holds either a full local device path (right after recording)
+  // or just the filename (e.g. "abc123.m4a") as returned by the backend.
   final String? audioPath;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -93,14 +95,16 @@ class Note {
       try {
         final decoded = jsonDecode(data);
         if (decoded is List) {
-          return List<Map<String, dynamic>>.from(decoded.map((e) => Map<String, dynamic>.from(e)));
+          return List<Map<String, dynamic>>.from(
+              decoded.map((e) => Map<String, dynamic>.from(e)));
         }
-      } catch (e) {
+      } catch (_) {
         return [];
       }
     }
     if (data is List) {
-        return List<Map<String, dynamic>>.from(data.map((e) => Map<String, dynamic>.from(e)));
+      return List<Map<String, dynamic>>.from(
+          data.map((e) => Map<String, dynamic>.from(e)));
     }
     return [];
   }
@@ -114,7 +118,7 @@ class Note {
         if (decoded is List) {
           return List<String>.from(decoded.map((e) => e.toString()));
         }
-      } catch (e) {
+      } catch (_) {
         return [];
       }
     }
@@ -129,19 +133,20 @@ class Note {
       id: json['id'] ?? '',
       title: json['title'] ?? '',
       content: json['content'] ?? '',
-
       summary: json['summary'] ?? '',
       keyConcepts: _parseList(json['keyConcepts']),
-      commonQuestions: _parseList(json['commonQuestions'] ?? json['quiz']),
+      // Backend stores quiz questions separately from commonQuestions.
+      // commonQuestions has {question, explanation}; quiz has {question, options, correctIndex, answer}.
+      commonQuestions: _parseList(json['commonQuestions']),
       finalThoughts: _parseStringList(json['finalThoughts']),
       actionItems: _parseList(json['actionItems']),
       flashcards: _parseList(json['flashcards']),
       folderId: json['folderId'],
       transcript: json['transcript'] ?? '',
-      audioPath: json['audioPath'],
+      // Backend returns 'audioUrl' (filename only); local recordings use 'audioPath' (full path).
+      audioPath: json['audioPath'] as String? ?? json['audioUrl'] as String?,
       createdAt: DateTime.parse(json['createdAt']),
       updatedAt: DateTime.parse(json['updatedAt']),
     );
   }
 }
-

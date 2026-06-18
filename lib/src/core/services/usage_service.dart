@@ -12,7 +12,7 @@ import 'dart:convert';
 final usageServiceProvider = Provider((ref) => UsageService());
 
 class UsageService {
-  String get _baseUrl => dotenv.get('API_BASE_URL', fallback: 'http://localhost:3000/v1');
+  String get _baseUrl => dotenv.get('API_BASE_URL');
 
   static const String _recordingCountKey = 'free_recording_count';
   static const String _guestIdKey = 'guest_unique_id';
@@ -47,7 +47,7 @@ class UsageService {
         return config['free_audio_limit'] ?? 1;
       }
     } catch (e) {
-      debugPrint('Error fetching free limit: $e');
+      debugPrint('UsageService: Error fetching free limit: $e');
     }
     return 1; // Fallback
   }

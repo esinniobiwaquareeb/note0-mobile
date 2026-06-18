@@ -27,7 +27,7 @@ final isAnalyzingProvider = StateProvider<bool>((ref) => false);
 class NotesController extends AsyncNotifier<List<Note>> {
 
   final _uuid = const Uuid();
-  String get _baseUrl => dotenv.get('API_BASE_URL', fallback: 'http://localhost:3000/v1');
+  String get _baseUrl => dotenv.get('API_BASE_URL');
 
   @override
   Future<List<Note>> build() async {

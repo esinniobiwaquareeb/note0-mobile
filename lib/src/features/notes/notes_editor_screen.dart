@@ -3,12 +3,13 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'notes_controller.dart';
@@ -20,6 +21,8 @@ import '../../core/theme/app_theme.dart';
 import '../../data/note.dart';
 import '../../core/utils/extensions.dart';
 import '../../core/utils/toast_utils.dart';
+import '../../core/services/auth_service.dart';
+import '../../core/services/usage_service.dart';
 
 
 class NotesEditorScreen extends ConsumerStatefulWidget {
@@ -73,16 +76,28 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
     try {
       if (_isPlaying) {
         await _audioPlayer.pause();
+        return;
+      }
+
+      if (note.audioPath == null) {
+        ToastUtils.showError(context, 'No audio recording available for this note.');
+        return;
+      }
+
+      // If it's an absolute local path, the file was recorded on this device.
+      // Otherwise it's a backend filename — stream from the uploads server.
+      if (note.audioPath!.startsWith('/') && File(note.audioPath!).existsSync()) {
+        await _audioPlayer.play(DeviceFileSource(note.audioPath!));
       } else {
-        if (note.audioPath != null && File(note.audioPath!).existsSync()) {
-          await _audioPlayer.play(DeviceFileSource(note.audioPath!));
-        } else {
-          await _audioPlayer.play(AssetSource('audio/sample.mp3'));
-        }
+        final authService = ref.read(authServiceProvider);
+        // Strip the /v1 API prefix to reach the uploads static endpoint.
+        final uploadsBase = authService.baseUrl.replaceFirst(RegExp(r'/v1/?$'), '');
+        final audioUrl = '$uploadsBase/uploads/${note.audioPath}';
+        await _audioPlayer.play(UrlSource(audioUrl));
       }
     } catch (e) {
       debugPrint('Playback error: $e');
-      ToastUtils.showError(context, 'Audio file not found or corrupted.');
+      ToastUtils.showError(context, 'Could not play audio: ${e.toString().replaceAll("Exception: ", "")}');
     }
   }
 
@@ -134,30 +149,21 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
   }
 
   void _showQuiz() {
+    final note = ref.read(notesControllerProvider).asData?.value.firstWhereOrNull((n) => n.id == widget.noteId);
+    if (note == null) return;
 
-    final List<Map<String, dynamic>> questions = [
-      {
-        'question': 'What is the primary topic of this note?',
-        'options': ['Audio Analysis', 'Project Management', 'Market Research', 'Daily Sync'],
-        'correctIndex': 0,
-      },
-      {
-        'question': 'Which frequency was identified as the broadband noise source?',
-        'options': ['50Hz', '60Hz', '440Hz', '1000Hz'],
-        'correctIndex': 1,
-      },
-      {
-        'question': 'What was the recommended gain for speech clarity?',
-        'options': ['3dB', '6dB', '10dB', '12dB'],
-        'correctIndex': 1,
-      },
-    ];
+    final List<Map<String, dynamic>> questions = note.commonQuestions;
+
+    if (questions.isEmpty) {
+      ToastUtils.showError(context, 'No quiz available for this note yet.');
+      return;
+    }
 
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => QuizScreen(
-          title: 'Note Analysis',
+          title: note.title.isEmpty ? 'Note Quiz' : note.title,
           questions: questions,
         ),
       ),
@@ -166,31 +172,111 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
 
   void _handleAITool(String tool) {
     Navigator.pop(context); // Close sheet
-    if (tool == 'Chat') {
-      final note = ref.read(notesControllerProvider).asData?.value.firstWhereOrNull((n) => n.id == widget.noteId);
+    final note = ref.read(notesControllerProvider).asData?.value.firstWhereOrNull((n) => n.id == widget.noteId);
+    if (note == null) return;
 
-      if (note != null) {
-        Navigator.push(context, MaterialPageRoute(builder: (context) => AIChatScreen(note: note)));
-      }
+    if (tool == 'Chat') {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => AIChatScreen(note: note)));
       return;
     }
-    _showAIProcessingDialog(tool);
+
+    if (tool == 'Generate Quiz') {
+      _showQuiz();
+      return;
+    }
+
+    _runAITool(note, tool);
   }
 
-  void _showAIProcessingDialog(String toolLabel) {
+  Future<void> _runAITool(Note note, String tool) async {
+    final authService = ref.read(authServiceProvider);
+    final guestId = await ref.read(usageServiceProvider).getGuestId();
+    final headers = await authService.getAuthHeaders()
+      ..['x-guest-id'] = guestId
+      ..['Content-Type'] = 'application/json';
+    final baseUrl = authService.baseUrl;
+
+    if (!mounted) return;
+
+    // Show non-dismissible loading dialog.
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => _AIProcessingDialog(toolLabel: toolLabel),
-    ).then((result) {
-      if (result != null) {
-        if (toolLabel.contains('Quiz')) {
-          _showQuiz();
-        } else {
-          ToastUtils.showSuccess(context, '$toolLabel Completed!');
-        }
+      builder: (_) => const _LoadingDialog(),
+    );
+
+    try {
+      http.Response response;
+
+      if (tool == 'Regenerate Summary') {
+        response = await http.post(
+          Uri.parse('$baseUrl/notes/${note.id}/regenerate-summary'),
+          headers: headers,
+        );
+      } else if (tool == 'Identify Blind Spots') {
+        response = await http.post(
+          Uri.parse('$baseUrl/notes/${note.id}/blind-spots'),
+          headers: headers,
+        );
+      } else if (tool == 'Translate Note') {
+        if (mounted) Navigator.pop(context);
+        ToastUtils.showInfo(context, 'Translation coming soon — stay tuned!');
+        return;
+      } else {
+        if (mounted) Navigator.pop(context);
+        return;
       }
-    });
+
+      if (mounted) Navigator.pop(context); // Close loader
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+
+        if (tool == 'Regenerate Summary') {
+          // Update note state with new summary.
+          await ref.read(notesControllerProvider.notifier).fetchNotes();
+          if (mounted) ToastUtils.showSuccess(context, 'Summary regenerated!');
+        } else if (tool == 'Identify Blind Spots') {
+          final blindSpots = body['blindSpots'] as String? ?? 'No blind spots identified.';
+          if (mounted) _showTextResultDialog('Identified Blind Spots', blindSpots);
+        }
+      } else {
+        final err = jsonDecode(response.body);
+        if (mounted) ToastUtils.showError(context, err['message'] ?? '$tool failed');
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      if (mounted) ToastUtils.showError(context, 'Network error: ${e.toString().replaceAll("Exception: ", "")}');
+    }
+  }
+
+  void _showTextResultDialog(String title, String content) {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        return AlertDialog(
+          backgroundColor: isDark ? AppTheme.darkSurface : Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+          content: SingleChildScrollView(
+            child: Text(content, style: const TextStyle(fontSize: 15, height: 1.6)),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Done'),
+            ),
+            TextButton(
+              onPressed: () {
+                Share.share('$title\n\n$content');
+              },
+              child: const Text('Share'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _seekRelative(int seconds) {
@@ -205,6 +291,19 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
       else _playbackSpeed = 1.0;
     });
     _audioPlayer.setPlaybackRate(_playbackSpeed);
+  }
+
+  void _shareAudio(Note note) {
+    if (note.audioPath == null) {
+      ToastUtils.showError(context, 'No audio available to share.');
+      return;
+    }
+    final authService = ref.read(authServiceProvider);
+    final uploadsBase = authService.baseUrl.replaceFirst(RegExp(r'/v1/?$'), '');
+    final audioUrl = note.audioPath!.startsWith('/')
+        ? note.audioPath! // local file path
+        : '$uploadsBase/uploads/${note.audioPath}';
+    Share.share('Listen to my note: $audioUrl');
   }
 
   @override
@@ -253,6 +352,7 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
                   onTogglePlay: () => _togglePlayback(note),
                   onSeekRelative: _seekRelative,
                   onSpeedToggle: _cycleSpeed,
+                  onDownload: () => _shareAudio(note),
                 ),
                 const Gap(24),
                 _NoteToolsHeader(
@@ -289,9 +389,10 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
                     : _StructuredNoteContent(note: note)
                 else
                   _TranscriptContent(
-                    note: note, 
+                    note: note,
                     isEditing: _isEditing,
                     controller: _transcriptController,
+                    onEditToggle: () => setState(() => _isEditing = !_isEditing),
                   ),
                 const Gap(80), // Space for bottom toggle
               ],
@@ -378,6 +479,7 @@ class _AudioPlayerCard extends StatelessWidget {
     required this.onTogglePlay,
     required this.onSeekRelative,
     required this.onSpeedToggle,
+    required this.onDownload,
   });
 
   final bool isPlaying;
@@ -387,6 +489,7 @@ class _AudioPlayerCard extends StatelessWidget {
   final VoidCallback onTogglePlay;
   final Function(int) onSeekRelative;
   final VoidCallback onSpeedToggle;
+  final VoidCallback onDownload;
 
   String _formatDuration(Duration d) {
     final minutes = d.inMinutes;
@@ -427,7 +530,7 @@ class _AudioPlayerCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _PlayerIconBtn(icon: Icons.download_outlined, onTap: () {}),
+              _PlayerIconBtn(icon: Icons.download_outlined, onTap: onDownload),
               _PlayerIconBtn(icon: Icons.replay_10, onTap: () => onSeekRelative(-10)),
               _PlayBtn(isPlaying: isPlaying, onTap: onTogglePlay),
               _PlayerIconBtn(icon: Icons.forward_10, onTap: () => onSeekRelative(10)),
@@ -800,10 +903,12 @@ class _TranscriptContent extends StatelessWidget {
     required this.note,
     this.isEditing = false,
     this.controller,
+    this.onEditToggle,
   });
   final Note note;
   final bool isEditing;
   final TextEditingController? controller;
+  final VoidCallback? onEditToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -826,14 +931,21 @@ class _TranscriptContent extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Row(
+            Row(
               children: [
-                Icon(Icons.list, size: 16, color: Colors.grey),
-                Gap(8),
-                Text('21 Words', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                const Icon(Icons.list, size: 16, color: Colors.grey),
+                const Gap(8),
+                Text(
+                  '${note.transcript.trim().split(RegExp(r'\s+')).where((s) => s.isNotEmpty).length} Words',
+                  style: const TextStyle(color: Colors.grey, fontSize: 13),
+                ),
               ],
             ),
-            _ToolBtnSmall(label: 'Edit', icon: Icons.edit, onTap: () {}),
+            _ToolBtnSmall(
+              label: isEditing ? 'Done' : 'Edit',
+              icon: isEditing ? Icons.check : Icons.edit,
+              onTap: onEditToggle ?? () {},
+            ),
           ],
         ),
         const Gap(16),
@@ -1093,13 +1205,13 @@ class _OptionsMenuSheet extends ConsumerWidget {
 
           const Gap(16),
           _MenuOption(
-            icon: Icons.file_copy_outlined, 
-            label: 'Share Transcript', 
+            icon: Icons.file_copy_outlined,
+            label: 'Share Transcript',
             onTap: () {
               Navigator.pop(context);
               final box = context.findRenderObject() as RenderBox?;
               Share.share(
-                note.content,
+                note.transcript.isNotEmpty ? note.transcript : note.content,
                 sharePositionOrigin: box != null ? box.localToGlobal(Offset.zero) & box.size : null,
               );
             }
@@ -1181,40 +1293,9 @@ class _ToolOption extends StatelessWidget {
     );
   }
 }
-class _AIProcessingDialog extends StatefulWidget {
-  const _AIProcessingDialog({required this.toolLabel});
-  final String toolLabel;
-
-  @override
-  State<_AIProcessingDialog> createState() => _AIProcessingDialogState();
-}
-
-class _AIProcessingDialogState extends State<_AIProcessingDialog> {
-  double _progress = 0.0;
-  String _status = 'Initializing AI...';
-
-  @override
-  void initState() {
-    super.initState();
-    _startSimulation();
-  }
-
-  void _startSimulation() async {
-    await Future.delayed(const Duration(milliseconds: 800));
-    if (!mounted) return;
-    setState(() { _progress = 0.3; _status = 'Analyzing context...'; });
-    
-    await Future.delayed(const Duration(milliseconds: 1200));
-    if (!mounted) return;
-    setState(() { _progress = 0.7; _status = 'Generating output...'; });
-    
-    await Future.delayed(const Duration(seconds: 1));
-    if (!mounted) return;
-    setState(() { _progress = 1.0; _status = 'Finalizing...'; });
-    
-    await Future.delayed(const Duration(milliseconds: 500));
-    if (mounted) Navigator.pop(context, true);
-  }
+/// Simple indeterminate spinner shown while a real backend AI call is in-flight.
+class _LoadingDialog extends StatelessWidget {
+  const _LoadingDialog();
 
   @override
   Widget build(BuildContext context) {
@@ -1222,35 +1303,21 @@ class _AIProcessingDialogState extends State<_AIProcessingDialog> {
     return Dialog(
       backgroundColor: Colors.transparent,
       child: Container(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 40),
         decoration: BoxDecoration(
           color: isDark ? AppTheme.darkSurface : Colors.white,
           borderRadius: BorderRadius.circular(24),
         ),
-        child: Column(
+        child: const Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.auto_awesome, color: Colors.blue, size: 48),
-            const Gap(24),
-            Text(
-              widget.toolLabel,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const Gap(8),
-            Text(
-              _status,
-              style: TextStyle(color: Colors.grey[500], fontSize: 13),
-            ),
-            const Gap(24),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: _progress,
-                backgroundColor: Colors.blue.withOpacity(0.1),
-                valueColor: const AlwaysStoppedAnimation(Colors.blue),
-                minHeight: 8,
-              ),
-            ),
+            Icon(Icons.auto_awesome, color: Colors.blue, size: 48),
+            Gap(24),
+            Text('AI Processing...', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+            Gap(8),
+            Text('This may take a moment', style: TextStyle(color: Colors.grey, fontSize: 13)),
+            Gap(24),
+            CircularProgressIndicator(strokeWidth: 2.5),
           ],
         ),
       ),

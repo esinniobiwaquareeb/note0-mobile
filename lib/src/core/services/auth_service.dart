@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,6 +12,9 @@ final authServiceProvider = Provider((ref) => AuthService());
 
 class AuthService {
   late final String _baseUrl = dotenv.get('API_BASE_URL');
+
+  /// Public getter so other widgets can reuse the env-loaded base URL.
+  String get baseUrl => _baseUrl;
   late final String _googleIosClientId = dotenv.get('GOOGLE_IOS_CLIENT_ID', fallback: '');
   late final String _googleWebClientId = dotenv.get('GOOGLE_WEB_CLIENT_ID', fallback: '');
   late final String _googleAndroidClientId = dotenv.get('GOOGLE_ANDROID_CLIENT_ID', fallback: '');
@@ -38,25 +42,14 @@ class AuthService {
 
   Future<Map<String, dynamic>?> signInWithGoogle() async {
     try {
-      print('AuthService: Starting Google Sign-In...');
-      print('AuthService: Client ID (iOS): $_googleIosClientId');
-      print('AuthService: Server Client ID: $_googleWebClientId');
-      
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       if (googleUser == null) {
-        print('AuthService: Google Sign-In cancelled by user or failed.');
         return null;
       }
 
-      print('AuthService: Google Sign-In successful: ${googleUser.email}');
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-      print('AuthService: Obtained authentication tokens.');
-      
       final deviceId = await getDeviceId();
-      print('AuthService: Device ID: $deviceId');
 
-      print('AuthService: Exchanging token with backend at: $_baseUrl/auth/google/verify');
-      // Exchange Google ID Token for backend JWT
       final response = await http.post(
         Uri.parse('$_baseUrl/auth/google/verify'),
         headers: {
@@ -68,20 +61,17 @@ class AuthService {
         }),
       ).timeout(const Duration(seconds: 30));
 
-      print('AuthService: Backend response: ${response.statusCode}');
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = jsonDecode(response.body);
         await _saveAuthData(data);
-        print('AuthService: Authentication complete (User: ${data['user']['name']}, Avatar: ${data['user']['avatarUrl']})');
         return data;
       } else {
-
-        print('AuthService: Backend authentication failed: ${response.body}');
+        debugPrint('AuthService: Backend authentication failed (${response.statusCode})');
         throw Exception('Failed to authenticate with backend: ${response.body}');
       }
     } catch (e) {
-      print('AuthService: Google Sign-In Error: $e');
-      rethrow; // Rethrow to let the UI catch and show the error
+      debugPrint('AuthService: Google Sign-In Error: $e');
+      rethrow;
     }
   }
 
@@ -94,9 +84,7 @@ class AuthService {
 
   Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token');
-    print('AuthService: getToken() returning ${token != null ? "a token" : "null"}');
-    return token;
+    return prefs.getString('token');
   }
 
   Future<Map<String, String>> getAuthHeaders({bool json = false}) async {
@@ -149,7 +137,7 @@ class AuthService {
       }
       return null;
     } catch (e) {
-      print('AuthService: fetchProfile failed: $e');
+      debugPrint('AuthService: fetchProfile failed: $e');
       return null;
     }
   }
@@ -187,7 +175,7 @@ class AuthService {
         throw Exception('Failed to delete account: ${response.body}');
       }
     } catch (e) {
-      print('AuthService: deleteAccount failed: $e');
+      debugPrint('AuthService: deleteAccount failed: $e');
       rethrow;
     }
   }

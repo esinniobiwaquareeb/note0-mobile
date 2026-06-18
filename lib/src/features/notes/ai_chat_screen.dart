@@ -1,17 +1,22 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 import '../../core/theme/app_theme.dart';
+import '../../core/services/auth_service.dart';
+import '../../core/utils/toast_utils.dart';
 import '../../data/note.dart';
 import 'package:gap/gap.dart';
 
-class AIChatScreen extends StatefulWidget {
+class AIChatScreen extends ConsumerStatefulWidget {
   const AIChatScreen({super.key, required this.note});
   final Note note;
 
   @override
-  State<AIChatScreen> createState() => _AIChatScreenState();
+  ConsumerState<AIChatScreen> createState() => _AIChatScreenState();
 }
 
-class _AIChatScreenState extends State<AIChatScreen> {
+class _AIChatScreenState extends ConsumerState<AIChatScreen> {
   final TextEditingController _controller = TextEditingController();
   final List<Map<String, String>> _messages = [];
   bool _isLoading = false;
@@ -25,9 +30,15 @@ class _AIChatScreenState extends State<AIChatScreen> {
     });
   }
 
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
   void _sendMessage() async {
     final text = _controller.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty || _isLoading) return;
 
     setState(() {
       _messages.add({'role': 'user', 'content': text});
@@ -35,18 +46,39 @@ class _AIChatScreenState extends State<AIChatScreen> {
       _isLoading = true;
     });
 
-    // Simulate AI thinking
-    await Future.delayed(const Duration(seconds: 1));
+    try {
+      final headers = await ref.read(authServiceProvider).getAuthHeaders(json: true);
+      final response = await http.post(
+        Uri.parse('${_baseUrl}/notes/${widget.note.id}/chat'),
+        headers: headers,
+        body: jsonEncode({'message': text}),
+      ).timeout(const Duration(seconds: 30));
 
-    if (mounted) {
-      setState(() {
-        _isLoading = false;
-        _messages.add({
-          'role': 'assistant',
-          'content': 'Based on your note, ${text.toLowerCase().contains('summary') ? 'here is a breakdown of the core themes...' : 'that\'s an interesting point. The transcript mentions this briefly in the second half.'}',
-        });
-      });
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = jsonDecode(response.body);
+        final reply = data['reply'] as String? ?? '';
+        if (mounted) {
+          setState(() {
+            _messages.add({'role': 'assistant', 'content': reply});
+          });
+        }
+      } else {
+        final err = jsonDecode(response.body);
+        throw Exception(err['message'] ?? 'AI chat failed.');
+      }
+    } catch (e) {
+      if (mounted) {
+        ToastUtils.showError(context, 'Could not get a response: ${e.toString().replaceAll('Exception: ', '')}');
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  String get _baseUrl {
+    final authService = ref.read(authServiceProvider);
+    // Re-use the same env-loaded base URL as auth_service
+    return authService.baseUrl;
   }
 
   @override
@@ -115,11 +147,11 @@ class _AIChatScreenState extends State<AIChatScreen> {
                   ),
                   const Gap(8),
                   GestureDetector(
-                    onTap: _sendMessage,
+                    onTap: _isLoading ? null : _sendMessage,
                     child: Container(
                       padding: const EdgeInsets.all(12),
-                      decoration: const BoxDecoration(
-                        color: Colors.blue,
+                      decoration: BoxDecoration(
+                        color: _isLoading ? Colors.grey : Colors.blue,
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(Icons.send, color: Colors.white, size: 20),
@@ -151,9 +183,9 @@ class _ChatBubble extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
         decoration: BoxDecoration(
-          color: isUser 
-            ? Colors.blue 
-            : (isDark ? Colors.white.withOpacity(0.1) : Colors.grey[200]),
+          color: isUser
+              ? Colors.blue
+              : (isDark ? Colors.white.withOpacity(0.1) : Colors.grey[200]),
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(20),
             topRight: const Radius.circular(20),
@@ -184,7 +216,9 @@ class _LoadingBubble extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 16),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: Theme.of(context).brightness == Brightness.dark ? Colors.white.withOpacity(0.1) : Colors.grey[200],
+          color: Theme.of(context).brightness == Brightness.dark
+              ? Colors.white.withOpacity(0.1)
+              : Colors.grey[200],
           borderRadius: const BorderRadius.only(
             topLeft: Radius.circular(20),
             topRight: Radius.circular(20),
@@ -194,7 +228,8 @@ class _LoadingBubble extends StatelessWidget {
         child: const SizedBox(
           width: 20,
           height: 20,
-          child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation(Colors.blue)),
+          child: CircularProgressIndicator(
+              strokeWidth: 2, valueColor: AlwaysStoppedAnimation(Colors.blue)),
         ),
       ),
     );

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
@@ -10,7 +11,7 @@ class SubscriptionService {
   final AuthService _authService;
   SubscriptionService(this._authService);
 
-  String get _baseUrl => dotenv.get('API_BASE_URL', fallback: 'http://localhost:3000/v1');
+  String get _baseUrl => dotenv.get('API_BASE_URL');
 
   Future<List<Map<String, dynamic>>> fetchHistory() async {
     final headers = await _authService.getAuthHeaders(json: true);
@@ -27,7 +28,7 @@ class SubscriptionService {
         return data.cast<Map<String, dynamic>>();
       }
     } catch (e) {
-      print('SubscriptionService: fetchHistory failed: $e');
+      debugPrint('SubscriptionService: fetchHistory failed: $e');
     }
     return [];
   }
@@ -46,7 +47,7 @@ class SubscriptionService {
         return jsonDecode(response.body);
       }
     } catch (e) {
-      print('SubscriptionService: fetchCurrentStatus failed: $e');
+      debugPrint('SubscriptionService: fetchCurrentStatus failed: $e');
     }
     return null;
   }
@@ -68,7 +69,7 @@ class SubscriptionService {
         return jsonDecode(response.body);
       }
     } catch (e) {
-      print('SubscriptionService: verifyPayment failed: $e');
+      debugPrint('SubscriptionService: verifyPayment failed: $e');
     }
     return null;
   }

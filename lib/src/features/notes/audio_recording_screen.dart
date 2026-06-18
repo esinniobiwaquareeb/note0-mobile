@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -10,40 +9,20 @@ class AudioRecordingScreen extends ConsumerStatefulWidget {
   const AudioRecordingScreen({super.key});
 
   @override
-  ConsumerState<AudioRecordingScreen> createState() => _AudioRecordingScreenState();
+  ConsumerState<AudioRecordingScreen> createState() =>
+      _AudioRecordingScreenState();
 }
 
 class _AudioRecordingScreenState extends ConsumerState<AudioRecordingScreen> {
-  Timer? _timer;
-  Duration _duration = Duration.zero;
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(recordingControllerProvider.notifier).start();
-      _startTimer();
     });
-  }
-
-  void _startTimer() {
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted) {
-        setState(() {
-          _duration = Duration(seconds: timer.tick);
-        });
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
   }
 
   Future<void> _stopRecording() async {
-    _timer?.cancel();
     final path = await ref.read(recordingControllerProvider.notifier).stop();
     if (mounted) {
       Navigator.pop(context, path);
@@ -51,15 +30,14 @@ class _AudioRecordingScreenState extends ConsumerState<AudioRecordingScreen> {
   }
 
   String _formatDuration(Duration duration) {
-    String twoDigits(int n) => n.toString().padLeft(2, '0');
-    final minutes = twoDigits(duration.inMinutes.remainder(60));
-    final seconds = twoDigits(duration.inSeconds.remainder(60));
-    return '$minutes:$seconds';
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(duration.inMinutes.remainder(60))}:${two(duration.inSeconds.remainder(60))}';
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    // Single source of truth: controller state (no local timer needed)
     final recordingState = ref.watch(recordingControllerProvider);
     final isRecording = recordingState.isRecording;
 
@@ -86,14 +64,25 @@ class _AudioRecordingScreenState extends ConsumerState<AudioRecordingScreen> {
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.mic, color: Colors.red, size: 48),
-            ).animate(onPlay: (controller) => isRecording ? controller.repeat() : null)
-             .scale(begin: const Offset(1, 1), end: const Offset(1.2, 1.2), duration: 1.seconds, curve: Curves.easeInOut)
-             .then()
-             .scale(begin: const Offset(1.2, 1.2), end: const Offset(1, 1), duration: 1.seconds, curve: Curves.easeInOut),
+            )
+                .animate(onPlay: (c) => isRecording ? c.repeat() : null)
+                .scale(
+                  begin: const Offset(1, 1),
+                  end: const Offset(1.2, 1.2),
+                  duration: 1.seconds,
+                  curve: Curves.easeInOut,
+                )
+                .then()
+                .scale(
+                  begin: const Offset(1.2, 1.2),
+                  end: const Offset(1, 1),
+                  duration: 1.seconds,
+                  curve: Curves.easeInOut,
+                ),
           ),
           const Gap(40),
           Text(
-            _formatDuration(_duration),
+            _formatDuration(recordingState.duration),
             style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold),
           ),
           const Gap(16),
