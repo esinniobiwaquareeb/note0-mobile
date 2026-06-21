@@ -525,8 +525,19 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
       context: context,
       builder: (context) => const YouTubeProcessingDialog(),
     );
-    if (result != null) {
+    if (result != null && mounted) {
       _showSuccess('Video integrated. Analyzing...');
+      try {
+        final videoUrl = 'https://www.youtube.com/watch?v=$result';
+        final note = await ref.read(notesControllerProvider.notifier).uploadYoutube(videoUrl);
+        if (mounted) {
+          _showSuccess('Analysis complete: ${note.title}');
+        }
+      } catch (e) {
+        if (mounted) {
+          _showError('Failed to analyze video: $e');
+        }
+      }
     }
   }
 

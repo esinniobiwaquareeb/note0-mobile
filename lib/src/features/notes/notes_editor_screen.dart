@@ -11,6 +11,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'notes_controller.dart';
 import 'folders_controller.dart';
@@ -79,20 +80,22 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
         return;
       }
 
-      if (note.audioPath == null) {
+      final hasLocal = note.audioPath != null && note.audioPath!.startsWith('/') && File(note.audioPath!).existsSync();
+      final hasRemote = (note.audioUrl != null && note.audioUrl!.isNotEmpty) || 
+                        (note.audioPath != null && !note.audioPath!.startsWith('/'));
+
+      if (!hasLocal && !hasRemote) {
         ToastUtils.showError(context, 'No audio recording available for this note.');
         return;
       }
 
-      // If it's an absolute local path, the file was recorded on this device.
-      // Otherwise it's a backend filename — stream from the uploads server.
-      if (note.audioPath!.startsWith('/') && File(note.audioPath!).existsSync()) {
+      if (hasLocal) {
         await _audioPlayer.play(DeviceFileSource(note.audioPath!));
       } else {
         final authService = ref.read(authServiceProvider);
-        // Strip the /v1 API prefix to reach the uploads static endpoint.
         final uploadsBase = authService.baseUrl.replaceFirst(RegExp(r'/v1/?$'), '');
-        final audioUrl = '$uploadsBase/uploads/${note.audioPath}';
+        final audioFilename = (note.audioUrl != null && note.audioUrl!.isNotEmpty) ? note.audioUrl : note.audioPath;
+        final audioUrl = '$uploadsBase/uploads/$audioFilename';
         await _audioPlayer.play(UrlSource(audioUrl));
       }
     } catch (e) {

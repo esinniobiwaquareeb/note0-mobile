@@ -123,6 +123,38 @@ class NotesController extends AsyncNotifier<List<Note>> {
     }
   }
 
+  Future<Note> uploadYoutube(String url) async {
+    final guestId = await ref.read(usageServiceProvider).getGuestId();
+    final requestUrl = Uri.parse('$_baseUrl/notes/youtube');
+    
+    ref.read(isAnalyzingProvider.notifier).state = true;
+    
+    try {
+      final authHeaders = await ref.read(authServiceProvider).getAuthHeaders(json: true);
+      final response = await http.post(
+        requestUrl,
+        headers: {
+          ...authHeaders,
+          'x-guest-id': guestId,
+        },
+        body: jsonEncode({'url': url}),
+      ).timeout(const Duration(seconds: 45));
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        final noteJson = jsonDecode(response.body);
+        final note = Note.fromJson(noteJson);
+        await ref.read(notesRepositoryProvider).upsert(note);
+        state = AsyncData(await fetchNotes());
+        return note;
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['message'] ?? 'Failed to analyze YouTube video');
+      }
+    } finally {
+      ref.read(isAnalyzingProvider.notifier).state = false;
+    }
+  }
+
 
   Future<Note> createEmpty() async {
 

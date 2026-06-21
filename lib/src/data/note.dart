@@ -15,6 +15,7 @@ class Note {
   // audioPath holds either a full local device path (right after recording)
   // or just the filename (e.g. "abc123.m4a") as returned by the backend.
   final String? audioPath;
+  final String? audioUrl;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -31,6 +32,7 @@ class Note {
     this.folderId,
     this.transcript = '',
     this.audioPath,
+    this.audioUrl,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -48,6 +50,7 @@ class Note {
     String? folderId,
     String? transcript,
     String? audioPath,
+    String? audioUrl,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -64,6 +67,7 @@ class Note {
       folderId: folderId ?? this.folderId,
       transcript: transcript ?? this.transcript,
       audioPath: audioPath ?? this.audioPath,
+      audioUrl: audioUrl ?? this.audioUrl,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -83,6 +87,7 @@ class Note {
       'folderId': folderId,
       'transcript': transcript,
       'audioPath': audioPath,
+      'audioUrl': audioUrl,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
     };
@@ -137,14 +142,15 @@ class Note {
       keyConcepts: _parseList(json['keyConcepts']),
       // Backend stores quiz questions separately from commonQuestions.
       // commonQuestions has {question, explanation}; quiz has {question, options, correctIndex, answer}.
-      commonQuestions: _parseList(json['commonQuestions']),
+      commonQuestions: _parseList(json['commonQuestions'] ?? json['quiz']),
       finalThoughts: _parseStringList(json['finalThoughts']),
       actionItems: _parseList(json['actionItems']),
       flashcards: _parseList(json['flashcards']),
       folderId: json['folderId'],
       transcript: json['transcript'] ?? '',
       // Backend returns 'audioUrl' (filename only); local recordings use 'audioPath' (full path).
-      audioPath: json['audioPath'] as String? ?? json['audioUrl'] as String?,
+      audioPath: json['audioPath'],
+      audioUrl: json['audioUrl'] ?? json['audio_url'],
       createdAt: DateTime.parse(json['createdAt']),
       updatedAt: DateTime.parse(json['updatedAt']),
     );
