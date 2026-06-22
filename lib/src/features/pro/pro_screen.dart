@@ -35,8 +35,10 @@ class _ProScreenState extends ConsumerState<ProScreen> {
       final baseUrl = dotenv.get('API_BASE_URL');
       final response = await http.get(Uri.parse('$baseUrl/subscriptions/plans'));
       if (response.statusCode == 200) {
+        final List<dynamic> allPlans = jsonDecode(response.body);
+        final filteredPlans = allPlans.where((plan) => plan['name'].toString().toLowerCase() != 'free').toList();
         setState(() {
-          _plans = jsonDecode(response.body);
+          _plans = filteredPlans;
           _isLoading = false;
         });
       }
@@ -188,6 +190,21 @@ class _ProScreenState extends ConsumerState<ProScreen> {
   }
 }
 
+String _formatInterval(String interval) {
+  switch (interval.toLowerCase()) {
+    case 'weekly':
+      return 'week';
+    case 'monthly':
+      return 'month';
+    case 'yearly':
+      return 'year';
+    case 'daily':
+      return 'day';
+    default:
+      return interval;
+  }
+}
+
 class _PlanCard extends StatelessWidget {
   const _PlanCard({
     required this.plan,
@@ -241,28 +258,35 @@ class _PlanCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      plan['name'],
-                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+                    Expanded(
+                      child: Text(
+                        plan['name'] ?? '',
+                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                      ),
                     ),
+                    const Gap(12),
                     Text(
-                      '₦${plan['amount']}',
-                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.blue),
+                      '${plan['currency'] == 'USD' ? '\$' : '₦'}${plan['amount']}',
+                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.blue),
                     ),
                   ],
                 ),
                 const Gap(4),
                 Text(
-                  'per ${plan['interval']}',
+                  'per ${_formatInterval((plan['interval'] ?? 'monthly').toString())}',
                   style: TextStyle(color: Colors.grey[500], fontSize: 13),
                 ),
                 const Gap(24),
-                _BenefitItem(text: plan['description'] ?? 'Unlimited AI Transcriptions'),
-                const _BenefitItem(text: 'High-Fidelity Audio Storage'),
-                const _BenefitItem(text: 'Advanced Folder Organization'),
-                const _BenefitItem(text: 'Priority Customer Support'),
+                if (plan['features'] != null && plan['features'] is List && (plan['features'] as List).isNotEmpty)
+                  ...(plan['features'] as List).map((feature) => _BenefitItem(text: feature.toString()))
+                else ...[
+                  _BenefitItem(text: plan['description'] ?? 'Unlimited AI Transcriptions'),
+                  const _BenefitItem(text: 'High-Fidelity Audio Storage'),
+                  const _BenefitItem(text: 'Advanced Folder Organization'),
+                  const _BenefitItem(text: 'Priority Customer Support'),
+                ],
                 const Gap(32),
                 SizedBox(
                   width: double.infinity,
@@ -281,7 +305,7 @@ class _PlanCard extends StatelessWidget {
                             height: 20,
                             child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                           )
-                        : const Text('Get Started', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        : const Text('Start 3-Day Free Trial', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
 
 
                   ),
@@ -304,12 +328,15 @@ class _BenefitItem extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Icon(Icons.check_circle, color: Colors.green, size: 20),
           const Gap(12),
-          Text(
-            text,
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+            ),
           ),
         ],
       ),
