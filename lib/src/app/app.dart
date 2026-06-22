@@ -4,7 +4,7 @@ import 'package:screen_protector/screen_protector.dart';
 import 'package:flutter/foundation.dart';
 import '../core/theme/app_theme.dart';
 import '../core/theme/theme_provider.dart';
-import '../features/onboarding/splash_screen.dart';
+import '../features/notes/notes_list_screen.dart';
 
 class App extends ConsumerStatefulWidget {
   const App({super.key});
@@ -37,7 +37,7 @@ class _AppState extends ConsumerState<App> {
       themeMode: themeMode,
       theme: AppTheme.lightTheme(),
       darkTheme: AppTheme.darkTheme(),
-      home: const SplashScreen(),
+      home: const NotesListScreen(),
     );
   }
 }
