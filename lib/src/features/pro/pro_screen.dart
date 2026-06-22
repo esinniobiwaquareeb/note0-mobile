@@ -144,15 +144,40 @@ class _ProScreenState extends ConsumerState<ProScreen> {
         final data = jsonDecode(response.body);
         final url = data['paymentUrl'];
         final reference = data['reference']?.toString();
-        if (mounted) {
-          final success = await Navigator.push<bool>(
-            context,
-            MaterialPageRoute(
-              builder: (_) => PaymentWebView(url: url, reference: reference),
-            ),
-          );
-          if (success == true && mounted) {
-            Navigator.pop(context, true);
+        
+        if (url == null) {
+          // Free or immediate activation
+          if (mounted) {
+            await ref.read(userProvider.notifier).refreshUser();
+            showDialog(
+              context: context,
+              barrierDismissible: false,
+              builder: (context) => AlertDialog(
+                title: const Text('Success!'),
+                content: const Text('Your subscription has been activated successfully.'),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(context).pop(); // Pop dialog
+                      Navigator.of(context).pop(true); // Pop screen
+                    },
+                    child: const Text('Awesome'),
+                  ),
+                ],
+              ),
+            );
+          }
+        } else {
+          if (mounted) {
+            final success = await Navigator.push<bool>(
+              context,
+              MaterialPageRoute(
+                builder: (_) => PaymentWebView(url: url, reference: reference),
+              ),
+            );
+            if (success == true && mounted) {
+              Navigator.pop(context, true);
+            }
           }
         }
       } else {
@@ -184,6 +209,8 @@ class _ProScreenState extends ConsumerState<ProScreen> {
     final userAsync = ref.watch(userProvider);
     final user = userAsync.value;
     final currentPlanName = user != null ? (user['plan'] ?? 'Free').toString() : 'Free';
+    final cancelAtPeriodEnd = user != null ? (user['cancelAtPeriodEnd'] == true) : false;
+    final renewalDateStr = user != null ? user['renewalDate']?.toString() : null;
 
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF000000) : const Color(0xFFF8F9FA),
@@ -236,7 +263,9 @@ class _ProScreenState extends ConsumerState<ProScreen> {
                         isPremium: isPremium,
                         isProcessing: _isProcessing,
                         isCurrentPlan: isCurrent,
-                        onCancelPlan: isCurrent && currentPlanName != 'Free' ? _cancelSubscription : null,
+                        cancelAtPeriodEnd: isCurrent ? cancelAtPeriodEnd : false,
+                        renewalDateStr: isCurrent ? renewalDateStr : null,
+                        onCancelPlan: isCurrent && currentPlanName != 'Free' && !cancelAtPeriodEnd ? _cancelSubscription : null,
                         onTap: () => _handlePlanSelection(plan, currentPlanName),
                       );
                     },
@@ -278,6 +307,8 @@ class _PlanCard extends StatelessWidget {
     required this.isProcessing,
     required this.isCurrentPlan,
     this.onCancelPlan,
+    this.cancelAtPeriodEnd = false,
+    this.renewalDateStr,
   });
   final dynamic plan;
   final bool isPremium;
@@ -285,6 +316,8 @@ class _PlanCard extends StatelessWidget {
   final VoidCallback onTap;
   final bool isCurrentPlan;
   final VoidCallback? onCancelPlan;
+  final bool cancelAtPeriodEnd;
+  final String? renewalDateStr;
 
 
   @override
@@ -384,12 +417,14 @@ class _PlanCard extends StatelessWidget {
                     child: OutlinedButton(
                       onPressed: null,
                       style: OutlinedButton.styleFrom(
-                        side: BorderSide(color: Colors.green.withOpacity(0.5)),
+                        side: BorderSide(color: cancelAtPeriodEnd ? Colors.orange.withOpacity(0.5) : Colors.green.withOpacity(0.5)),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                       ),
-                      child: const Text(
-                        'Active Plan',
-                        style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 16),
+                      child: Text(
+                        cancelAtPeriodEnd 
+                          ? 'Cancels on ${renewalDateStr != null ? DateTime.tryParse(renewalDateStr!)?.toLocal().toString().split(' ')[0] ?? '' : ''}'
+                          : 'Active Plan',
+                        style: TextStyle(color: cancelAtPeriodEnd ? Colors.orange : Colors.green, fontWeight: FontWeight.bold, fontSize: 16),
                       ),
                     ),
                   ),
