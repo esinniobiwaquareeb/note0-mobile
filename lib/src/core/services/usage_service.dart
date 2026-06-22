@@ -51,17 +51,4 @@ class UsageService {
     }
     return 1; // Fallback
   }
-
-
-  Future<bool> canRecord(bool isPro) async {
-    if (isPro) return true;
-
-    final count = await getFreeRecordingCount();
-    // We'll also try to fetch the actual count from backend if we have a network
-    // but for now, rely on local count + backend limit
-    final limit = await getFreeLimit();
-
-    return count < limit;
-  }
-
 }

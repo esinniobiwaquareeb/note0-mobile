@@ -28,6 +28,7 @@ class NotesController extends AsyncNotifier<List<Note>> {
 
   final _uuid = const Uuid();
   String get _baseUrl => dotenv.get('API_BASE_URL');
+  final Map<String, Note> _pendingNotes = {};
 
   @override
   Future<List<Note>> build() async {
@@ -35,7 +36,19 @@ class NotesController extends AsyncNotifier<List<Note>> {
     return await fetchNotes();
   }
 
+  void _updateState(List<Note> fetchedNotes) {
+    final List<Note> merged = [];
+    merged.addAll(_pendingNotes.values);
+    for (var n in fetchedNotes) {
+      if (!_pendingNotes.containsKey(n.id)) {
+        merged.add(n);
+      }
+    }
+    state = AsyncData(merged);
+  }
+
   Future<List<Note>> fetchNotes() async {
+    List<Note> fetched = [];
     try {
       final guestId = await ref.read(usageServiceProvider).getGuestId();
       final headers = await ref.read(authServiceProvider).getAuthHeaders();
@@ -47,21 +60,153 @@ class NotesController extends AsyncNotifier<List<Note>> {
 
       if (response.statusCode == 200) {
         final List<dynamic> json = jsonDecode(response.body);
-        return json.map((m) => Note.fromJson(m)).toList();
+        fetched = json.map((m) => Note.fromJson(m)).toList();
+      } else {
+        fetched = await ref.read(notesRepositoryProvider).list();
       }
     } catch (e) {
-      // Fallback to local if API fails
-      return await ref.read(notesRepositoryProvider).list();
+      fetched = await ref.read(notesRepositoryProvider).list();
     }
-    return await ref.read(notesRepositoryProvider).list();
+
+    // Merge with pending notes
+    final List<Note> merged = [];
+    merged.addAll(_pendingNotes.values);
+    for (var n in fetched) {
+      if (!_pendingNotes.containsKey(n.id)) {
+        merged.add(n);
+      }
+    }
+    return merged;
+  }
+
+  // Asynchronous Background Operations
+  Future<void> startAudioProcessing(
+    String localFilePath, {
+    required void Function(Note) onComplete,
+    required void Function(String) onError,
+  }) async {
+    final tempId = 'temp_${_uuid.v4()}';
+    final tempNote = Note(
+      id: tempId,
+      title: 'Transcribing Audio...',
+      content: 'Uploading and processing audio transcription & analysis with AI in the background.',
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+      isProcessing: true,
+      audioPath: localFilePath,
+    );
+
+    _pendingNotes[tempId] = tempNote;
+    _updateState(state.asData?.value ?? []);
+
+    _uploadAndAnalyzeBackground(tempId, localFilePath, onComplete, onError);
+  }
+
+  Future<void> _uploadAndAnalyzeBackground(
+    String tempId,
+    String localFilePath,
+    void Function(Note) onComplete,
+    void Function(String) onError,
+  ) async {
+    try {
+      final note = await uploadRecording(localFilePath);
+      _pendingNotes.remove(tempId);
+      final list = await fetchNotes();
+      state = AsyncData(list);
+      onComplete(note);
+    } catch (e) {
+      _pendingNotes.remove(tempId);
+      final list = await fetchNotes();
+      state = AsyncData(list);
+      onError(e.toString().replaceAll('Exception: ', ''));
+    }
+  }
+
+  Future<void> startYoutubeProcessing(
+    String videoUrl, {
+    required void Function(Note) onComplete,
+    required void Function(String) onError,
+  }) async {
+    final tempId = 'temp_${_uuid.v4()}';
+    final tempNote = Note(
+      id: tempId,
+      title: 'Processing YouTube...',
+      content: 'Fetching YouTube video, transcribing audio, and analyzing content in the background.',
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+      isProcessing: true,
+    );
+
+    _pendingNotes[tempId] = tempNote;
+    _updateState(state.asData?.value ?? []);
+
+    _youtubeBackground(tempId, videoUrl, onComplete, onError);
+  }
+
+  Future<void> _youtubeBackground(
+    String tempId,
+    String videoUrl,
+    void Function(Note) onComplete,
+    void Function(String) onError,
+  ) async {
+    try {
+      final note = await uploadYoutube(videoUrl);
+      _pendingNotes.remove(tempId);
+      final list = await fetchNotes();
+      state = AsyncData(list);
+      onComplete(note);
+    } catch (e) {
+      _pendingNotes.remove(tempId);
+      final list = await fetchNotes();
+      state = AsyncData(list);
+      onError(e.toString().replaceAll('Exception: ', ''));
+    }
+  }
+
+  Future<void> startScanProcessing(
+    String imagePath, {
+    required void Function(Note) onComplete,
+    required void Function(String) onError,
+  }) async {
+    final tempId = 'temp_${_uuid.v4()}';
+    final tempNote = Note(
+      id: tempId,
+      title: 'Analyzing Document...',
+      content: 'Extracting text via OCR and compiling concepts with AI in the background.',
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+      isProcessing: true,
+    );
+
+    _pendingNotes[tempId] = tempNote;
+    _updateState(state.asData?.value ?? []);
+
+    _scanBackground(tempId, imagePath, onComplete, onError);
+  }
+
+  Future<void> _scanBackground(
+    String tempId,
+    String imagePath,
+    void Function(Note) onComplete,
+    void Function(String) onError,
+  ) async {
+    try {
+      final note = await uploadScan(imagePath);
+      _pendingNotes.remove(tempId);
+      final list = await fetchNotes();
+      state = AsyncData(list);
+      onComplete(note);
+    } catch (e) {
+      _pendingNotes.remove(tempId);
+      final list = await fetchNotes();
+      state = AsyncData(list);
+      onError(e.toString().replaceAll('Exception: ', ''));
+    }
   }
 
   Future<Note> uploadRecording(String filePath) async {
     final guestId = await ref.read(usageServiceProvider).getGuestId();
     final url = Uri.parse('$_baseUrl/notes/upload');
-    
-    // Set analyzing state
-    ref.read(isAnalyzingProvider.notifier).state = true;
     
     try {
       final authHeaders = await ref.read(authServiceProvider).getAuthHeaders();
@@ -77,26 +222,24 @@ class NotesController extends AsyncNotifier<List<Note>> {
         final noteJson = jsonDecode(response.body);
         final note = Note.fromJson(noteJson);
         
-        // Save locally as well for offline
         await ref.read(notesRepositoryProvider).upsert(note);
-        
-        // Refresh state
-        state = AsyncData(await fetchNotes());
+        final authService = ref.read(authServiceProvider);
+        if (!await authService.isAuthenticated()) {
+          await ref.read(usageServiceProvider).incrementRecordingCount();
+        }
         return note;
       } else {
         final error = jsonDecode(response.body);
         throw Exception(error['message'] ?? 'Failed to upload recording');
       }
-    } finally {
-      ref.read(isAnalyzingProvider.notifier).state = false;
+    } catch (e) {
+      rethrow;
     }
   }
 
   Future<Note> uploadScan(String filePath) async {
     final guestId = await ref.read(usageServiceProvider).getGuestId();
     final url = Uri.parse('$_baseUrl/notes/upload-scan');
-    
-    ref.read(isAnalyzingProvider.notifier).state = true;
     
     try {
       final authHeaders = await ref.read(authServiceProvider).getAuthHeaders();
@@ -112,22 +255,23 @@ class NotesController extends AsyncNotifier<List<Note>> {
         final noteJson = jsonDecode(response.body);
         final note = Note.fromJson(noteJson);
         await ref.read(notesRepositoryProvider).upsert(note);
-        state = AsyncData(await fetchNotes());
+        final authService = ref.read(authServiceProvider);
+        if (!await authService.isAuthenticated()) {
+          await ref.read(usageServiceProvider).incrementRecordingCount();
+        }
         return note;
       } else {
         final error = jsonDecode(response.body);
         throw Exception(error['message'] ?? 'Failed to upload scan');
       }
-    } finally {
-      ref.read(isAnalyzingProvider.notifier).state = false;
+    } catch (e) {
+      rethrow;
     }
   }
 
   Future<Note> uploadYoutube(String url) async {
     final guestId = await ref.read(usageServiceProvider).getGuestId();
     final requestUrl = Uri.parse('$_baseUrl/notes/youtube');
-    
-    ref.read(isAnalyzingProvider.notifier).state = true;
     
     try {
       final authHeaders = await ref.read(authServiceProvider).getAuthHeaders(json: true);
@@ -144,14 +288,17 @@ class NotesController extends AsyncNotifier<List<Note>> {
         final noteJson = jsonDecode(response.body);
         final note = Note.fromJson(noteJson);
         await ref.read(notesRepositoryProvider).upsert(note);
-        state = AsyncData(await fetchNotes());
+        final authService = ref.read(authServiceProvider);
+        if (!await authService.isAuthenticated()) {
+          await ref.read(usageServiceProvider).incrementRecordingCount();
+        }
         return note;
       } else {
         final error = jsonDecode(response.body);
         throw Exception(error['message'] ?? 'Failed to analyze YouTube video');
       }
-    } finally {
-      ref.read(isAnalyzingProvider.notifier).state = false;
+    } catch (e) {
+      rethrow;
     }
   }
 

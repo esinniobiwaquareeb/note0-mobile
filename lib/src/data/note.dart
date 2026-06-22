@@ -18,6 +18,7 @@ class Note {
   final String? audioUrl;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final bool isProcessing;
 
   Note({
     required this.id,
@@ -35,6 +36,7 @@ class Note {
     this.audioUrl,
     required this.createdAt,
     required this.updatedAt,
+    this.isProcessing = false,
   });
 
   Note copyWith({
@@ -53,6 +55,7 @@ class Note {
     String? audioUrl,
     DateTime? createdAt,
     DateTime? updatedAt,
+    bool? isProcessing,
   }) {
     return Note(
       id: id ?? this.id,
@@ -70,6 +73,7 @@ class Note {
       audioUrl: audioUrl ?? this.audioUrl,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      isProcessing: isProcessing ?? this.isProcessing,
     );
   }
 
@@ -90,6 +94,7 @@ class Note {
       'audioUrl': audioUrl,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
+      'isProcessing': isProcessing,
     };
   }
 
@@ -153,6 +158,7 @@ class Note {
       audioUrl: json['audioUrl'] ?? json['audio_url'],
       createdAt: DateTime.parse(json['createdAt']),
       updatedAt: DateTime.parse(json['updatedAt']),
+      isProcessing: json['isProcessing'] ?? false,
     );
   }
 }

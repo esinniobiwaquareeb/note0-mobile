@@ -47,6 +47,9 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
   }
 
   Future<void> _scanDocument() async {
+    final canProceed = await _checkLimitBeforeAction();
+    if (!canProceed) return;
+
     try {
       final documentScanner = DocumentScanner(
         options: DocumentScannerOptions(
@@ -55,17 +58,37 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
         ),
       );
 
-
       final result = await documentScanner.scanDocument();
       if (result.images!.isNotEmpty) {
-        // Upload the first image (or handle multiple if needed later)
         final path = result.images!.first;
-        await ref.read(notesControllerProvider.notifier).uploadScan(path);
-        ToastUtils.showSuccess(context, 'Document scanned and analyzed');
+        _showSuccess('Document scanned. Analyzing in background...');
+        ref.read(notesControllerProvider.notifier).startScanProcessing(
+          path,
+          onComplete: (note) {
+            if (mounted) {
+              _showSuccessWithAction(
+                'Document analyzed: "${note.title}"',
+                'Open',
+                () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => NotesEditorScreen(noteId: note.id),
+                    ),
+                  );
+                },
+              );
+            }
+          },
+          onError: (err) {
+            if (mounted) {
+              _showError('Document analysis failed: $err');
+            }
+          },
+        );
       }
     } catch (e) {
       if (e.toString().contains('cancelled')) return;
-      ToastUtils.showError(context, 'Scanning failed: $e');
+      _showError('Scanning failed: $e');
     }
   }
 
@@ -377,20 +400,35 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
     );
   }
 
-  Future<void> _startRecording() async {
+  Future<bool> _checkLimitBeforeAction() async {
     final usageService = ref.read(usageServiceProvider);
     final authService = ref.read(authServiceProvider);
 
     final isPro = await authService.isPro();
+    if (isPro) return true;
 
-    final canRecord = await usageService.canRecord(isPro);
+    final isLoggedIn = await authService.isAuthenticated();
+    int count = 0;
+    if (isLoggedIn) {
+      final notes = ref.read(notesControllerProvider).value ?? [];
+      count = notes.length;
+    } else {
+      count = await usageService.getFreeRecordingCount();
+    }
 
-    if (!canRecord) {
+    final limit = await usageService.getFreeLimit();
+    if (count >= limit) {
       if (mounted) {
         _showLimitReachedDialog(context);
       }
-      return;
+      return false;
     }
+    return true;
+  }
+
+  Future<void> _startRecording() async {
+    final canProceed = await _checkLimitBeforeAction();
+    if (!canProceed) return;
 
     if (!mounted) return;
     final path = await Navigator.push<String?>(
@@ -399,29 +437,36 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
     );
 
     if (path != null) {
-      _showSuccess('Recording completed. Analyzing with AI...');
+      _showSuccess('Recording completed. Processing in background...');
 
-      try {
-        final note = await ref
-            .read(notesControllerProvider.notifier)
-            .uploadRecording(path);
-
-        if (mounted) {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => NotesEditorScreen(noteId: note.id)),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          if (e.toString().contains('limit reached')) {
-            _showLimitReachedDialog(context);
-          } else {
-            _showError(e.toString());
+      ref.read(notesControllerProvider.notifier).startAudioProcessing(
+        path,
+        onComplete: (note) {
+          if (mounted) {
+            _showSuccessWithAction(
+              'Analysis complete: "${note.title}"',
+              'Open',
+              () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => NotesEditorScreen(noteId: note.id),
+                  ),
+                );
+              },
+            );
           }
-        }
-      }
+        },
+        onError: (err) {
+          if (mounted) {
+            if (err.contains('limit reached')) {
+              _showLimitReachedDialog(context);
+            } else {
+              _showError('Analysis failed: $err');
+            }
+          }
+        },
+      );
     }
-
   }
 
   void _showLimitReachedDialog(BuildContext context) {
@@ -511,33 +556,76 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
 
 
   Future<void> _uploadFile() async {
+    final canProceed = await _checkLimitBeforeAction();
+    if (!canProceed) return;
+
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['m4a', 'mp3', 'wav'],
     );
-    if (result != null) {
-      _showSuccess('File uploaded. Analyzing...');
+    if (result != null && result.files.single.path != null) {
+      final path = result.files.single.path!;
+      _showSuccess('File uploaded. Processing in background...');
+      ref.read(notesControllerProvider.notifier).startAudioProcessing(
+        path,
+        onComplete: (note) {
+          if (mounted) {
+            _showSuccessWithAction(
+              'Analysis complete: "${note.title}"',
+              'Open',
+              () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => NotesEditorScreen(noteId: note.id),
+                  ),
+                );
+              },
+            );
+          }
+        },
+        onError: (err) {
+          if (mounted) {
+            _showError('Analysis failed: $err');
+          }
+        },
+      );
     }
   }
 
   Future<void> _processYouTube(BuildContext context) async {
+    final canProceed = await _checkLimitBeforeAction();
+    if (!canProceed) return;
+
     final result = await showDialog<String?>(
       context: context,
       builder: (context) => const YouTubeProcessingDialog(),
     );
     if (result != null && mounted) {
-      _showSuccess('Video integrated. Analyzing...');
-      try {
-        final videoUrl = 'https://www.youtube.com/watch?v=$result';
-        final note = await ref.read(notesControllerProvider.notifier).uploadYoutube(videoUrl);
-        if (mounted) {
-          _showSuccess('Analysis complete: ${note.title}');
-        }
-      } catch (e) {
-        if (mounted) {
-          _showError('Failed to analyze video: $e');
-        }
-      }
+      _showSuccess('Video integrated. Analyzing in background...');
+      final videoUrl = 'https://www.youtube.com/watch?v=$result';
+      ref.read(notesControllerProvider.notifier).startYoutubeProcessing(
+        videoUrl,
+        onComplete: (note) {
+          if (mounted) {
+            _showSuccessWithAction(
+              'YouTube video analyzed: "${note.title}"',
+              'Open',
+              () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => NotesEditorScreen(noteId: note.id),
+                  ),
+                );
+              },
+            );
+          }
+        },
+        onError: (err) {
+          if (mounted) {
+            _showError('YouTube analysis failed: $err');
+          }
+        },
+      );
     }
   }
 
@@ -575,6 +663,7 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
 
   void _showError(String message) {
     if (!mounted) return;
+    ScaffoldMessenger.of(context).removeCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -586,12 +675,31 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
   }
 
   void _showSuccess(String message) {
-
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).removeCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
         behavior: SnackBarBehavior.floating,
         backgroundColor: Colors.green,
+      ),
+    );
+  }
+
+  void _showSuccessWithAction(String message, String actionLabel, VoidCallback onAction) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).removeCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 8),
+        action: SnackBarAction(
+          label: actionLabel,
+          textColor: Colors.white,
+          onPressed: onAction,
+        ),
       ),
     );
   }
@@ -729,6 +837,17 @@ class _NoteTile extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 12),
       child: InkWell(
         onTap: () {
+          if (note.isProcessing) {
+            ScaffoldMessenger.of(context).removeCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Note0 is transcribing this note. Please wait...'),
+                behavior: SnackBarBehavior.floating,
+                duration: Duration(seconds: 2),
+              ),
+            );
+            return;
+          }
           Navigator.of(context).push(
             MaterialPageRoute(
               builder: (_) => NotesEditorScreen(noteId: note.id),
@@ -754,15 +873,20 @@ class _NoteTile extends StatelessWidget {
                   color: isDark ? Colors.white10 : Colors.grey[100],
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Hero(
-                  tag: 'note-icon-${note.id}',
-                  child: Icon(
-                    note.title.contains('Noise')
-                        ? Icons.speaker_group
-                        : Icons.volume_up,
-                    color: isDark ? Colors.white70 : Colors.black54,
-                  ),
-                ),
+                child: note.isProcessing
+                    ? const Padding(
+                        padding: EdgeInsets.all(12.0),
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Hero(
+                        tag: 'note-icon-${note.id}',
+                        child: Icon(
+                          note.title.contains('Noise')
+                              ? Icons.speaker_group
+                              : Icons.volume_up,
+                          color: isDark ? Colors.white70 : Colors.black54,
+                        ),
+                      ),
               ),
               const Gap(16),
               Expanded(
@@ -780,17 +904,20 @@ class _NoteTile extends StatelessWidget {
                             style: TextStyle(
                               fontWeight: FontWeight.w600,
                               fontSize: 16,
-                              color: isDark ? Colors.white : Colors.black,
+                              color: note.isProcessing
+                                  ? (isDark ? Colors.white54 : Colors.black54)
+                                  : (isDark ? Colors.white : Colors.black),
                             ),
                           ),
                         ),
-                        Text(
-                          DateFormat('MMM dd').format(note.updatedAt),
-                          style: TextStyle(
-                            color: Colors.grey[500],
-                            fontSize: 12,
+                        if (!note.isProcessing)
+                          Text(
+                            DateFormat('MMM dd').format(note.updatedAt),
+                            style: TextStyle(
+                              color: Colors.grey[500],
+                              fontSize: 12,
+                            ),
                           ),
-                        ),
                       ],
                     ),
                     const Gap(4),
@@ -800,7 +927,12 @@ class _NoteTile extends StatelessWidget {
                           : note.content,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: Colors.grey[500], fontSize: 14),
+                      style: TextStyle(
+                        color: note.isProcessing
+                            ? Colors.grey[600]
+                            : Colors.grey[500],
+                        fontSize: 14,
+                      ),
                     ),
                   ],
                 ),
