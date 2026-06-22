@@ -6,10 +6,13 @@ import './payment_webview.dart';
 
 
 import 'package:http/http.dart' as http;
-
 import 'dart:convert';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/providers/user_provider.dart';
+import '../../core/services/subscription_service.dart';
+import '../../core/widgets/confirm_dialog.dart';
+import '../../core/utils/toast_utils.dart';
 
 class ProScreen extends ConsumerStatefulWidget {
   const ProScreen({super.key});
@@ -48,6 +51,59 @@ class _ProScreenState extends ConsumerState<ProScreen> {
       });
       debugPrint('Error fetching plans: $e');
     }
+  }
+
+  Future<void> _cancelSubscription() async {
+    if (_isProcessing) return;
+
+    final confirmed = await ConfirmDialog.show(
+      context,
+      title: 'Cancel Subscription?',
+      message: 'Are you sure you want to cancel your active Pro subscription? You will lose access to all Pro features and your account will revert to the Free plan.',
+      confirmLabel: 'Cancel Subscription',
+      cancelLabel: 'Keep Plan',
+      isDestructive: true,
+    );
+    if (!confirmed) return;
+
+    setState(() => _isProcessing = true);
+    try {
+      final success = await ref.read(subscriptionServiceProvider).cancelSubscription();
+      if (success) {
+        if (mounted) {
+          ToastUtils.showSuccess(context, 'Subscription cancelled successfully.');
+          await ref.read(userProvider.notifier).refreshUser();
+        }
+      } else {
+        if (mounted) {
+          ToastUtils.showError(context, 'Failed to cancel subscription.');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ToastUtils.showError(context, 'Error: $e');
+      }
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
+  Future<void> _handlePlanSelection(dynamic plan, String currentPlanName) async {
+    final planId = _planIdentifier(plan);
+    final planName = plan['name'].toString();
+
+    if (currentPlanName != 'Free') {
+      final confirmed = await ConfirmDialog.show(
+        context,
+        title: 'Change Subscription Plan?',
+        message: 'Are you sure you want to change your current plan to the $planName plan?',
+        confirmLabel: 'Confirm Change',
+        cancelLabel: 'Cancel',
+      );
+      if (!confirmed) return;
+    }
+
+    _initializeSubscription(planId);
   }
 
   Future<void> _initializeSubscription(String planName) async {
@@ -125,6 +181,9 @@ class _ProScreenState extends ConsumerState<ProScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final userAsync = ref.watch(userProvider);
+    final user = userAsync.value;
+    final currentPlanName = user != null ? (user['plan'] ?? 'Free').toString() : 'Free';
 
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF000000) : const Color(0xFFF8F9FA),
@@ -169,14 +228,17 @@ class _ProScreenState extends ConsumerState<ProScreen> {
                     itemBuilder: (context, index) {
                       final plan = _plans[index];
                       final isPremium = plan['name'].toString().toLowerCase().contains('premium');
-                      
+                      final planName = plan['name'].toString();
+                      final isCurrent = planName == currentPlanName;
+
                       return _PlanCard(
                         plan: plan,
                         isPremium: isPremium,
                         isProcessing: _isProcessing,
-                        onTap: () => _initializeSubscription(_planIdentifier(plan)),
+                        isCurrentPlan: isCurrent,
+                        onCancelPlan: isCurrent && currentPlanName != 'Free' ? _cancelSubscription : null,
+                        onTap: () => _handlePlanSelection(plan, currentPlanName),
                       );
-
                     },
                   ),
                 ),
@@ -214,11 +276,15 @@ class _PlanCard extends StatelessWidget {
     required this.isPremium,
     required this.onTap,
     required this.isProcessing,
+    required this.isCurrentPlan,
+    this.onCancelPlan,
   });
   final dynamic plan;
   final bool isPremium;
   final bool isProcessing;
   final VoidCallback onTap;
+  final bool isCurrentPlan;
+  final VoidCallback? onCancelPlan;
 
 
   @override
@@ -231,17 +297,37 @@ class _PlanCard extends StatelessWidget {
         color: isDark ? const Color(0xFF111111) : Colors.white,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: isPremium ? Colors.blue.withOpacity(0.5) : (isDark ? Colors.white10 : Colors.black.withOpacity(0.05)),
-          width: isPremium ? 2 : 1,
+          color: isCurrentPlan
+              ? Colors.green.withOpacity(0.8)
+              : (isPremium
+                  ? Colors.blue.withOpacity(0.5)
+                  : (isDark ? Colors.white10 : Colors.black.withOpacity(0.05))),
+          width: isCurrentPlan || isPremium ? 2 : 1,
         ),
-        boxShadow: isPremium 
-          ? [BoxShadow(color: Colors.blue.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, 10))]
-          : [],
+        boxShadow: isCurrentPlan
+          ? [BoxShadow(color: Colors.green.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, 10))]
+          : (isPremium
+              ? [BoxShadow(color: Colors.blue.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, 10))]
+              : []),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (isPremium)
+          if (isCurrentPlan)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              decoration: const BoxDecoration(
+                color: Colors.green,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+              ),
+              child: const Text(
+                'YOUR CURRENT PLAN',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.2),
+              ),
+            )
+          else if (isPremium)
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -291,28 +377,62 @@ class _PlanCard extends StatelessWidget {
                   const _BenefitItem(text: 'Priority Customer Support'),
                 ],
                 const Gap(32),
-                SizedBox(
-                  width: double.infinity,
-                  height: 56,
-                  child: ElevatedButton(
-                    onPressed: onTap,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isPremium ? Colors.blue : (isDark ? Colors.white10 : Colors.black),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      elevation: 0,
+                if (isCurrentPlan) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: OutlinedButton(
+                      onPressed: null,
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(color: Colors.green.withOpacity(0.5)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      child: const Text(
+                        'Active Plan',
+                        style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
                     ),
-                    child: isProcessing 
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                          )
-                        : const Text('Start 3-Day Free Trial', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-
-
                   ),
-                ),
+                  if (onCancelPlan != null) ...[
+                    const Gap(12),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: TextButton(
+                        onPressed: isProcessing ? null : onCancelPlan,
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.redAccent,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        ),
+                        child: const Text(
+                          'Cancel Subscription',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                        ),
+                      ),
+                    ),
+                  ],
+                ] else ...[
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: ElevatedButton(
+                      onPressed: isProcessing ? null : onTap,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: isPremium ? Colors.blue : (isDark ? Colors.white10 : Colors.black),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        elevation: 0,
+                      ),
+                      child: isProcessing 
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Text('Start 3-Day Free Trial', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

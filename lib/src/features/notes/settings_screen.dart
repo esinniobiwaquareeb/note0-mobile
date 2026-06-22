@@ -13,6 +13,7 @@ import '../auth/login_screen.dart';
 import '../pro/subscription_history_screen.dart';
 import '../pro/pro_screen.dart';
 import '../pro/payment_webview.dart';
+import '../../core/widgets/confirm_dialog.dart';
 
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -26,6 +27,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _isLoggingOut = false;
 
   Future<void> _logout() async {
+    final confirmed = await ConfirmDialog.show(
+      context,
+      title: 'Log Out',
+      message: 'Are you sure you want to log out of your Note0 account?',
+      confirmLabel: 'Log Out',
+      cancelLabel: 'Cancel',
+      isDestructive: true,
+    );
+    if (!confirmed) return;
+
     setState(() => _isLoggingOut = true);
     try {
       await ref.read(userProvider.notifier).logout();
@@ -197,24 +208,39 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         return _SettingsTile(
                           icon: Icons.auto_awesome,
                           title: '$plan Active',
-                          trailing: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.blue.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Text(
-                              'ACTIVE',
-                              style: TextStyle(
-                                color: Colors.blue,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Text(
+                                  'ACTIVE',
+                                  style: TextStyle(
+                                    color: Colors.blue,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
+                                ),
                               ),
-                            ),
+                              const Gap(8),
+                              Icon(Icons.chevron_right, color: Colors.grey[400], size: 20),
+                            ],
                           ),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const ProScreen(),
+                              ),
+                            );
+                          },
                         );
                       }
 
@@ -391,30 +417,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  void _showDeleteAccountConfirm(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Account?'),
-        content: const Text(
-          'This action is permanent. All your notes, flashcards, and subscription data will be permanently erased. This cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(context); // Close dialog
-              _performDeleteAccount();
-            },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete Permanently'),
-          ),
-        ],
-      ),
+  void _showDeleteAccountConfirm(BuildContext context) async {
+    final confirmed = await ConfirmDialog.show(
+      context,
+      title: 'Delete Account?',
+      message: 'This action is permanent. All your notes, flashcards, and subscription data will be permanently erased. This cannot be undone.',
+      confirmLabel: 'Delete Permanently',
+      cancelLabel: 'Cancel',
+      isDestructive: true,
     );
+    if (confirmed && mounted) {
+      _performDeleteAccount();
+    }
   }
 
   Future<void> _performDeleteAccount() async {

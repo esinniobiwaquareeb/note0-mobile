@@ -73,4 +73,23 @@ class SubscriptionService {
     }
     return null;
   }
+
+  Future<bool> cancelSubscription() async {
+    final headers = await _authService.getAuthHeaders(json: true);
+    if (!headers.containsKey('Authorization')) return false;
+
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/subscriptions/cancel'),
+        headers: headers,
+      ).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return true;
+      }
+    } catch (e) {
+      debugPrint('SubscriptionService: cancelSubscription failed: $e');
+    }
+    return false;
+  }
 }
