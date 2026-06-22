@@ -26,6 +26,7 @@ class PaymentWebView extends ConsumerStatefulWidget {
 class _PaymentWebViewState extends ConsumerState<PaymentWebView> {
   late final WebViewController _controller;
   bool _isLoading = true;
+  bool _successHandled = false;
 
   @override
   void initState() {
@@ -58,6 +59,11 @@ class _PaymentWebViewState extends ConsumerState<PaymentWebView> {
   }
 
   void _handleSuccess() async {
+    if (_successHandled) return;
+    setState(() {
+      _successHandled = true;
+    });
+
     if (widget.reference != null && widget.reference!.isNotEmpty) {
       await ref.read(subscriptionServiceProvider).verifyPayment(widget.reference!);
     } else {
@@ -71,23 +77,25 @@ class _PaymentWebViewState extends ConsumerState<PaymentWebView> {
     }
     
     // Show success dialog
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('Success!'),
-        content: const Text('Your Pro subscription has been activated.'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop(); // Pop dialog
-              Navigator.of(context).pop(); // Pop webview
-            },
-            child: const Text('Awesome'),
-          ),
-        ],
-      ),
-    );
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: const Text('Success!'),
+          content: const Text('Your Pro subscription has been activated.'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // Pop dialog
+                Navigator.of(context).pop(true); // Pop webview with success flag
+              },
+              child: const Text('Awesome'),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   @override

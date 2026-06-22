@@ -89,12 +89,15 @@ class _ProScreenState extends ConsumerState<ProScreen> {
         final url = data['paymentUrl'];
         final reference = data['reference']?.toString();
         if (mounted) {
-          Navigator.push(
+          final success = await Navigator.push<bool>(
             context,
             MaterialPageRoute(
               builder: (_) => PaymentWebView(url: url, reference: reference),
             ),
           );
+          if (success == true && mounted) {
+            Navigator.pop(context, true);
+          }
         }
       } else {
         throw Exception('Failed to initialize subscription');
