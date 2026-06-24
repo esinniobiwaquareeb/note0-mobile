@@ -10,6 +10,9 @@ class Note {
   final List<String> finalThoughts;
   final List<Map<String, dynamic>> actionItems;
   final List<Map<String, dynamic>> flashcards;
+  final List<Map<String, dynamic>> quiz;
+  final String? blindSpots;
+  final List<Map<String, dynamic>> chatHistory;
   final String? folderId;
   final String transcript;
   // audioPath holds either a full local device path (right after recording)
@@ -30,6 +33,9 @@ class Note {
     this.finalThoughts = const [],
     this.actionItems = const [],
     this.flashcards = const [],
+    this.quiz = const [],
+    this.blindSpots,
+    this.chatHistory = const [],
     this.folderId,
     this.transcript = '',
     this.audioPath,
@@ -49,6 +55,9 @@ class Note {
     List<String>? finalThoughts,
     List<Map<String, dynamic>>? actionItems,
     List<Map<String, dynamic>>? flashcards,
+    List<Map<String, dynamic>>? quiz,
+    String? blindSpots,
+    List<Map<String, dynamic>>? chatHistory,
     String? folderId,
     String? transcript,
     String? audioPath,
@@ -67,6 +76,9 @@ class Note {
       finalThoughts: finalThoughts ?? this.finalThoughts,
       actionItems: actionItems ?? this.actionItems,
       flashcards: flashcards ?? this.flashcards,
+      quiz: quiz ?? this.quiz,
+      blindSpots: blindSpots ?? this.blindSpots,
+      chatHistory: chatHistory ?? this.chatHistory,
       folderId: folderId ?? this.folderId,
       transcript: transcript ?? this.transcript,
       audioPath: audioPath ?? this.audioPath,
@@ -88,6 +100,9 @@ class Note {
       'finalThoughts': finalThoughts,
       'actionItems': actionItems,
       'flashcards': flashcards,
+      'quiz': quiz,
+      'blindSpots': blindSpots,
+      'chatHistory': chatHistory,
       'folderId': folderId,
       'transcript': transcript,
       'audioPath': audioPath,
@@ -145,12 +160,13 @@ class Note {
       content: json['content'] ?? '',
       summary: json['summary'] ?? '',
       keyConcepts: _parseList(json['keyConcepts']),
-      // Backend stores quiz questions separately from commonQuestions.
-      // commonQuestions has {question, explanation}; quiz has {question, options, correctIndex, answer}.
-      commonQuestions: _parseList(json['commonQuestions'] ?? json['quiz']),
+      commonQuestions: _parseList(json['commonQuestions']),
       finalThoughts: _parseStringList(json['finalThoughts']),
       actionItems: _parseList(json['actionItems']),
       flashcards: _parseList(json['flashcards']),
+      quiz: _parseList(json['quiz']),
+      blindSpots: json['blindSpots'],
+      chatHistory: _parseList(json['chatHistory']),
       folderId: json['folderId'],
       transcript: json['transcript'] ?? '',
       // Backend returns 'audioUrl' (filename only); local recordings use 'audioPath' (full path).

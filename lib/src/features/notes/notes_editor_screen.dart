@@ -12,6 +12,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:youtube_explode_dart/youtube_explode_dart.dart' as yt;
 
 import 'notes_controller.dart';
 import 'folders_controller.dart';
@@ -38,6 +39,7 @@ class NotesEditorScreen extends ConsumerStatefulWidget {
 class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
   int _selectedTab = 0; // 0 for Note, 1 for Transcript
   bool _isEditing = false;
+  late TextEditingController _titleController;
   late TextEditingController _contentController;
   late TextEditingController _transcriptController;
   late AudioPlayer _audioPlayer;
@@ -49,6 +51,7 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
   @override
   void initState() {
     super.initState();
+    _titleController = TextEditingController();
     _contentController = TextEditingController();
     _transcriptController = TextEditingController();
     _audioPlayer = AudioPlayer();
@@ -67,6 +70,7 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
 
   @override
   void dispose() {
+    _titleController.dispose();
     _contentController.dispose();
     _transcriptController.dispose();
     _audioPlayer.dispose();
@@ -95,8 +99,33 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
         final authService = ref.read(authServiceProvider);
         final uploadsBase = authService.baseUrl.replaceFirst(RegExp(r'/v1/?$'), '');
         final audioFilename = (note.audioUrl != null && note.audioUrl!.isNotEmpty) ? note.audioUrl : note.audioPath;
-        final audioUrl = '$uploadsBase/uploads/$audioFilename';
-        await _audioPlayer.play(UrlSource(audioUrl));
+        
+        final isYoutube = audioFilename != null && (audioFilename.contains('youtube.com') || audioFilename.contains('youtu.be'));
+        if (isYoutube) {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => const Center(
+              child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation(Colors.blue)),
+            ),
+          );
+          final ytClient = yt.YoutubeExplode();
+          try {
+            final manifest = await ytClient.videos.streams.getManifest(audioFilename);
+            final audioStream = manifest.audioOnly.withHighestBitrate();
+            final directAudioUrl = audioStream.url.toString();
+            if (mounted) Navigator.pop(context); // close loader
+            await _audioPlayer.play(UrlSource(directAudioUrl));
+          } catch (e) {
+            if (mounted) Navigator.pop(context); // close loader
+            rethrow;
+          } finally {
+            ytClient.close();
+          }
+        } else {
+          final audioUrl = '$uploadsBase/uploads/$audioFilename';
+          await _audioPlayer.play(UrlSource(audioUrl));
+        }
       }
     } catch (e) {
       debugPrint('Playback error: $e');
@@ -133,7 +162,7 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
                 pw.Header(level: 1, text: 'Flashcards'),
                 for (var card in note.flashcards)
                   pw.Bullet(
-                      text: '${card['question']}\nAns: ${card['answer']}'),
+                      text: '${card['front'] ?? card['question']}\nAns: ${card['back'] ?? card['answer']}'),
               ],
             ];
           },
@@ -141,7 +170,8 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
       );
 
       final output = await getTemporaryDirectory();
-      final file = File("${output.path}/${note.title.replaceAll(' ', '_')}.pdf");
+      final sanitizedTitle = note.title.replaceAll(RegExp(r'[\\/:*?"<>| ]'), '_');
+      final file = File("${output.path}/$sanitizedTitle.pdf");
       await file.writeAsBytes(await pdf.save());
 
       await Share.shareXFiles([XFile(file.path)], text: 'Check out my note from Note0!');
@@ -155,7 +185,7 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
     final note = ref.read(notesControllerProvider).asData?.value.firstWhereOrNull((n) => n.id == widget.noteId);
     if (note == null) return;
 
-    final List<Map<String, dynamic>> questions = note.commonQuestions;
+    final questions = note.quiz.isNotEmpty ? note.quiz : note.commonQuestions;
 
     if (questions.isEmpty) {
       ToastUtils.showError(context, 'No quiz available for this note yet.');
@@ -166,8 +196,7 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
       context,
       MaterialPageRoute(
         builder: (context) => QuizScreen(
-          title: note.title.isEmpty ? 'Note Quiz' : note.title,
-          questions: questions,
+          note: note,
         ),
       ),
     );
@@ -186,6 +215,18 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
     if (tool == 'Generate Quiz') {
       _showQuiz();
       return;
+    }
+
+    if (tool == 'Translate Note') {
+      _showTranslationDialog(note);
+      return;
+    }
+
+    if (tool == 'Identify Blind Spots') {
+      if (note.blindSpots != null && note.blindSpots!.isNotEmpty) {
+        _showTextResultDialog('Identified Blind Spots', note.blindSpots!);
+        return;
+      }
     }
 
     _runAITool(note, tool);
@@ -221,10 +262,6 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
           Uri.parse('$baseUrl/notes/${note.id}/blind-spots'),
           headers: headers,
         );
-      } else if (tool == 'Translate Note') {
-        if (mounted) Navigator.pop(context);
-        ToastUtils.showInfo(context, 'Translation coming soon — stay tuned!');
-        return;
       } else {
         if (mounted) Navigator.pop(context);
         return;
@@ -241,6 +278,12 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
           if (mounted) ToastUtils.showSuccess(context, 'Summary regenerated!');
         } else if (tool == 'Identify Blind Spots') {
           final blindSpots = body['blindSpots'] as String? ?? 'No blind spots identified.';
+          await ref.read(notesControllerProvider.notifier).upsert(
+            id: note.id,
+            title: note.title,
+            content: note.content,
+            blindSpots: blindSpots,
+          );
           if (mounted) _showTextResultDialog('Identified Blind Spots', blindSpots);
         }
       } else {
@@ -250,6 +293,89 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
     } catch (e) {
       if (mounted) Navigator.pop(context);
       if (mounted) ToastUtils.showError(context, 'Network error: ${e.toString().replaceAll("Exception: ", "")}');
+    }
+  }
+
+  void _showTranslationDialog(Note note) {
+    final languages = [
+      {'name': 'Spanish', 'code': 'Spanish'},
+      {'name': 'French', 'code': 'French'},
+      {'name': 'German', 'code': 'German'},
+      {'name': 'Chinese', 'code': 'Chinese'},
+      {'name': 'Japanese', 'code': 'Japanese'},
+      {'name': 'Yoruba', 'code': 'Yoruba'},
+      {'name': 'Swahili', 'code': 'Swahili'},
+      {'name': 'Arabic', 'code': 'Arabic'},
+    ];
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        return AlertDialog(
+          backgroundColor: isDark ? AppTheme.darkSurface : Colors.white,
+          title: Text(
+            'Select Target Language',
+            style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontWeight: FontWeight.bold),
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: languages.length,
+              itemBuilder: (BuildContext context, int index) {
+                final lang = languages[index];
+                return ListTile(
+                  title: Text(
+                    lang['name']!,
+                    style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context); // Close dialog
+                    _translateNote(note, lang['code']!);
+                  },
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel', style: TextStyle(color: Colors.blue)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _translateNote(Note note, String targetLanguage) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(valueColor: AlwaysStoppedAnimation(Colors.blue)),
+            Gap(16),
+            Text('Translating note fields...', style: TextStyle(color: Colors.white, decoration: TextDecoration.none, fontSize: 16)),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      await ref.read(notesControllerProvider.notifier).translateNote(note.id, targetLanguage);
+      if (mounted) {
+        Navigator.pop(context); // Close loader
+        ToastUtils.showSuccess(context, 'Note translated successfully to $targetLanguage!');
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Close loader
+        ToastUtils.showError(context, 'Translation failed: ${e.toString().replaceAll('Exception: ', '')}');
+      }
     }
   }
 
@@ -362,18 +488,20 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
                   note: note,
                   isEditing: _isEditing,
                   selectedTab: _selectedTab,
+                  titleController: _titleController,
                   onNoteTools: () => _showNoteTools(context),
                   onEditToggle: () {
                     if (_isEditing) {
                       // Save changes
                       ref.read(notesControllerProvider.notifier).upsert(
                         id: note.id,
-                        title: note.title,
+                        title: _titleController.text,
                         content: _contentController.text,
                         transcript: _transcriptController.text,
                       );
                       ToastUtils.showSuccess(context, 'Changes saved successfully');
                     } else {
+                      _titleController.text = note.title;
                       _contentController.text = note.content;
                       _transcriptController.text = note.transcript;
                     }
@@ -660,12 +788,14 @@ class _NoteToolsHeader extends StatelessWidget {
     required this.selectedTab,
     required this.onNoteTools,
     required this.onEditToggle,
+    this.titleController,
   });
   final Note note;
   final bool isEditing;
   final int selectedTab;
   final VoidCallback onNoteTools;
   final VoidCallback onEditToggle;
+  final TextEditingController? titleController;
 
   @override
   Widget build(BuildContext context) {
@@ -713,12 +843,29 @@ class _NoteToolsHeader extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    note.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: isDark ? Colors.white : Colors.black),
-                  ),
+                  isEditing && titleController != null
+                      ? TextField(
+                          controller: titleController,
+                          style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: isDark ? Colors.white : Colors.black),
+                          decoration: const InputDecoration(
+                            hintText: 'Enter title...',
+                            border: InputBorder.none,
+                            contentPadding: EdgeInsets.zero,
+                            isDense: true,
+                          ),
+                        )
+                      : Text(
+                          note.title.isEmpty ? 'Untitled Note' : note.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: isDark ? Colors.white : Colors.black),
+                        ),
                   const Gap(4),
                   Text(
                     'Last Modified: ${DateFormat('MM-dd-yyyy - HH:mm').format(note.updatedAt)}',

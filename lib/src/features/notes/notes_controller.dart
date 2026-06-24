@@ -326,6 +326,9 @@ class NotesController extends AsyncNotifier<List<Note>> {
     String? audioPath,
     List<Map<String, dynamic>>? actionItems,
     List<Map<String, dynamic>>? flashcards,
+    List<Map<String, dynamic>>? quiz,
+    String? blindSpots,
+    List<Map<String, dynamic>>? chatHistory,
   }) async {
     final existing = state.asData?.value.firstWhereOrNull(
       (n) => n.id == id,
@@ -351,16 +354,94 @@ class NotesController extends AsyncNotifier<List<Note>> {
       audioPath: audioPath ?? base.audioPath,
       actionItems: actionItems ?? base.actionItems,
       flashcards: flashcards ?? base.flashcards,
+      quiz: quiz ?? base.quiz,
+      blindSpots: blindSpots ?? base.blindSpots,
+      chatHistory: chatHistory ?? base.chatHistory,
       updatedAt: now,
     );
 
     await ref.read(notesRepositoryProvider).upsert(note);
     state = AsyncData(await ref.read(notesRepositoryProvider).list());
+
+    try {
+      final guestId = await ref.read(usageServiceProvider).getGuestId();
+      final headers = await ref.read(authServiceProvider).getAuthHeaders(json: true);
+      headers['x-guest-id'] = guestId;
+      final response = await http.patch(
+        Uri.parse('$_baseUrl/notes/$id'),
+        headers: headers,
+        body: jsonEncode({
+          'title': title,
+          'content': content,
+          if (transcript != null) 'transcript': transcript,
+          if (actionItems != null) 'actionItems': actionItems,
+          if (flashcards != null) 'flashcards': flashcards,
+        }),
+      );
+      if (response.statusCode == 200) {
+        final noteJson = jsonDecode(response.body);
+        final backendNote = Note.fromJson(noteJson);
+        await ref.read(notesRepositoryProvider).upsert(backendNote);
+        state = AsyncData(await ref.read(notesRepositoryProvider).list());
+      }
+    } catch (_) {
+      // Handle connection error gracefully
+    }
   }
 
   Future<void> deleteNote(String id) async {
+    try {
+      final guestId = await ref.read(usageServiceProvider).getGuestId();
+      final headers = await ref.read(authServiceProvider).getAuthHeaders();
+      headers['x-guest-id'] = guestId;
+      await http.delete(
+        Uri.parse('$_baseUrl/notes/$id'),
+        headers: headers,
+      );
+    } catch (_) {}
     await ref.read(notesRepositoryProvider).deleteById(id);
-    state = AsyncData(await ref.read(notesRepositoryProvider).list());
+    state = AsyncData(await fetchNotes());
+  }
+
+  Future<Note> regenerateQuiz(String noteId) async {
+    final guestId = await ref.read(usageServiceProvider).getGuestId();
+    final headers = await ref.read(authServiceProvider).getAuthHeaders();
+    headers['x-guest-id'] = guestId;
+    final response = await http.post(
+      Uri.parse('$_baseUrl/notes/$noteId/regenerate-quiz'),
+      headers: headers,
+    );
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      final noteJson = jsonDecode(response.body);
+      final updatedNote = Note.fromJson(noteJson);
+      await ref.read(notesRepositoryProvider).upsert(updatedNote);
+      state = AsyncData(await fetchNotes());
+      return updatedNote;
+    } else {
+      final error = jsonDecode(response.body);
+      throw Exception(error['message'] ?? 'Failed to regenerate quiz');
+    }
+  }
+
+  Future<Note> translateNote(String noteId, String targetLanguage) async {
+    final guestId = await ref.read(usageServiceProvider).getGuestId();
+    final headers = await ref.read(authServiceProvider).getAuthHeaders(json: true);
+    headers['x-guest-id'] = guestId;
+    final response = await http.post(
+      Uri.parse('$_baseUrl/notes/$noteId/translate'),
+      headers: headers,
+      body: jsonEncode({'targetLanguage': targetLanguage}),
+    );
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      final noteJson = jsonDecode(response.body);
+      final updatedNote = Note.fromJson(noteJson);
+      await ref.read(notesRepositoryProvider).upsert(updatedNote);
+      state = AsyncData(await fetchNotes());
+      return updatedNote;
+    } else {
+      final error = jsonDecode(response.body);
+      throw Exception(error['message'] ?? 'Failed to translate note');
+    }
   }
 
   Future<void> moveToFolder(String noteId, String? folderId) async {
@@ -368,10 +449,20 @@ class NotesController extends AsyncNotifier<List<Note>> {
     Note? note = notes.firstWhereOrNull((n) => n.id == noteId);
     
     if (note != null) {
-
       final updatedNote = note.copyWith(folderId: folderId, updatedAt: DateTime.now());
       await ref.read(notesRepositoryProvider).upsert(updatedNote);
       state = AsyncData(await ref.read(notesRepositoryProvider).list());
+      
+      try {
+        final guestId = await ref.read(usageServiceProvider).getGuestId();
+        final headers = await ref.read(authServiceProvider).getAuthHeaders(json: true);
+        headers['x-guest-id'] = guestId;
+        await http.patch(
+          Uri.parse('$_baseUrl/notes/$noteId'),
+          headers: headers,
+          body: jsonEncode({'folderId': folderId}),
+        );
+      } catch (_) {}
     }
   }
 
@@ -389,6 +480,17 @@ class NotesController extends AsyncNotifier<List<Note>> {
       final updatedNote = note.copyWith(actionItems: items, updatedAt: DateTime.now());
       await ref.read(notesRepositoryProvider).upsert(updatedNote);
       state = AsyncData(await ref.read(notesRepositoryProvider).list());
+
+      try {
+        final guestId = await ref.read(usageServiceProvider).getGuestId();
+        final headers = await ref.read(authServiceProvider).getAuthHeaders(json: true);
+        headers['x-guest-id'] = guestId;
+        await http.patch(
+          Uri.parse('$_baseUrl/notes/$noteId'),
+          headers: headers,
+          body: jsonEncode({'actionItems': items}),
+        );
+      } catch (_) {}
     }
   }
 }

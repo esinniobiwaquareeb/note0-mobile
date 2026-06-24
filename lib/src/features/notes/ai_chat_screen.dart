@@ -8,6 +8,8 @@ import '../../core/utils/toast_utils.dart';
 import '../../data/note.dart';
 import 'package:gap/gap.dart';
 
+import 'notes_controller.dart';
+
 class AIChatScreen extends ConsumerStatefulWidget {
   const AIChatScreen({super.key, required this.note});
   final Note note;
@@ -24,10 +26,17 @@ class _AIChatScreenState extends ConsumerState<AIChatScreen> {
   @override
   void initState() {
     super.initState();
-    _messages.add({
-      'role': 'assistant',
-      'content': 'I\'ve analyzed "${widget.note.title}". What would you like to know about it?',
-    });
+    if (widget.note.chatHistory.isNotEmpty) {
+      _messages.addAll(widget.note.chatHistory.map((m) => {
+        'role': m['role']?.toString() ?? '',
+        'content': m['content']?.toString() ?? '',
+      }));
+    } else {
+      _messages.add({
+        'role': 'assistant',
+        'content': 'I\'ve analyzed "${widget.note.title}". What would you like to know about it?',
+      });
+    }
   }
 
   @override
@@ -61,6 +70,19 @@ class _AIChatScreenState extends ConsumerState<AIChatScreen> {
           setState(() {
             _messages.add({'role': 'assistant', 'content': reply});
           });
+
+          final updatedHistory = [
+            ...widget.note.chatHistory,
+            {'role': 'user', 'content': text},
+            {'role': 'assistant', 'content': reply},
+          ];
+
+          await ref.read(notesControllerProvider.notifier).upsert(
+            id: widget.note.id,
+            title: widget.note.title,
+            content: widget.note.content,
+            chatHistory: updatedHistory,
+          );
         }
       } else {
         final err = jsonDecode(response.body);
