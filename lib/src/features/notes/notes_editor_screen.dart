@@ -555,12 +555,7 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
                           hintText: 'Start writing your note...',
                         ),
                       )
-                    : (note.content.isNotEmpty 
-                        ? Text(
-                            note.content,
-                            style: TextStyle(fontSize: 16, color: isDark ? Colors.white : AppTheme.darkBackground.withOpacity(0.8), height: 1.5),
-                          )
-                        : _StructuredNoteContent(note: note))
+                    : _StructuredNoteContent(note: note)
                 else
                   _TranscriptContent(
                     note: note,
