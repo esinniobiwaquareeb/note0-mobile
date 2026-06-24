@@ -11,6 +11,7 @@ class Note {
   final List<Map<String, dynamic>> actionItems;
   final List<Map<String, dynamic>> flashcards;
   final List<Map<String, dynamic>> quiz;
+  final Map<String, dynamic>? cornellNotes;
   final String? blindSpots;
   final List<Map<String, dynamic>> chatHistory;
   final String? folderId;
@@ -34,6 +35,7 @@ class Note {
     this.actionItems = const [],
     this.flashcards = const [],
     this.quiz = const [],
+    this.cornellNotes,
     this.blindSpots,
     this.chatHistory = const [],
     this.folderId,
@@ -56,6 +58,7 @@ class Note {
     List<Map<String, dynamic>>? actionItems,
     List<Map<String, dynamic>>? flashcards,
     List<Map<String, dynamic>>? quiz,
+    Map<String, dynamic>? cornellNotes,
     String? blindSpots,
     List<Map<String, dynamic>>? chatHistory,
     String? folderId,
@@ -77,6 +80,7 @@ class Note {
       actionItems: actionItems ?? this.actionItems,
       flashcards: flashcards ?? this.flashcards,
       quiz: quiz ?? this.quiz,
+      cornellNotes: cornellNotes ?? this.cornellNotes,
       blindSpots: blindSpots ?? this.blindSpots,
       chatHistory: chatHistory ?? this.chatHistory,
       folderId: folderId ?? this.folderId,
@@ -101,6 +105,7 @@ class Note {
       'actionItems': actionItems,
       'flashcards': flashcards,
       'quiz': quiz,
+      'cornellNotes': cornellNotes,
       'blindSpots': blindSpots,
       'chatHistory': chatHistory,
       'folderId': folderId,
@@ -165,11 +170,11 @@ class Note {
       actionItems: _parseList(json['actionItems']),
       flashcards: _parseList(json['flashcards']),
       quiz: _parseList(json['quiz']),
+      cornellNotes: json['cornellNotes'] != null ? Map<String, dynamic>.from(json['cornellNotes']) : null,
       blindSpots: json['blindSpots'],
       chatHistory: _parseList(json['chatHistory']),
       folderId: json['folderId'],
       transcript: json['transcript'] ?? '',
-      // Backend returns 'audioUrl' (filename only); local recordings use 'audioPath' (full path).
       audioPath: json['audioPath'],
       audioUrl: json['audioUrl'] ?? json['audio_url'],
       createdAt: DateTime.parse(json['createdAt']),

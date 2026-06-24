@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -37,7 +39,7 @@ class NotesEditorScreen extends ConsumerStatefulWidget {
 }
 
 class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
-  int _selectedTab = 0; // 0 for Note, 1 for Transcript
+  int _selectedTab = 0; // 0 for Note, 1 for Transcript, 2 for Cornell
   bool _isEditing = false;
   late TextEditingController _titleController;
   late TextEditingController _contentController;
@@ -47,6 +49,13 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
   double _playbackSpeed = 1.0;
+
+  // Study Focus Pomodoro Timer State
+  Timer? _studyTimer;
+  int _timerSeconds = 1500; // 25 mins default
+  int _selectedDurationMinutes = 25;
+  bool _isTimerActive = false;
+  bool _isTimerRunning = false;
 
   @override
   void initState() {
@@ -74,6 +83,7 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
     _contentController.dispose();
     _transcriptController.dispose();
     _audioPlayer.dispose();
+    _studyTimer?.cancel();
     super.dispose();
   }
 
@@ -250,6 +260,11 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
         _showTextResultDialog('Identified Blind Spots', note.blindSpots!);
         return;
       }
+    }
+
+    if (tool == 'Focus Timer') {
+      _showFocusTimerOptions();
+      return;
     }
 
     _runAITool(note, tool);
@@ -499,74 +514,92 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
           ),
         ],
       ),
-      body: Column(
+      body: Stack(
         children: [
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              children: [
-                const Gap(16),
-                _AudioPlayerCard(
-                  isPlaying: _isPlaying,
-                  duration: _duration,
-                  position: _position,
-                  speed: _playbackSpeed,
-                  onTogglePlay: () => _togglePlayback(note),
-                  onSeekRelative: _seekRelative,
-                  onSpeedToggle: _cycleSpeed,
-                  onDownload: () => _shareAudio(note),
+          Column(
+            children: [
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  children: [
+                    const Gap(16),
+                    _AudioPlayerCard(
+                      isPlaying: _isPlaying,
+                      duration: _duration,
+                      position: _position,
+                      speed: _playbackSpeed,
+                      onTogglePlay: () => _togglePlayback(note),
+                      onSeekRelative: _seekRelative,
+                      onSpeedToggle: _cycleSpeed,
+                      onDownload: () => _shareAudio(note),
+                    ),
+                    const Gap(24),
+                    _NoteToolsHeader(
+                      note: note,
+                      isEditing: _isEditing,
+                      selectedTab: _selectedTab,
+                      titleController: _titleController,
+                      onNoteTools: () => _showNoteTools(context),
+                      onEditToggle: () {
+                        if (_isEditing) {
+                          // Save changes
+                          ref.read(notesControllerProvider.notifier).upsert(
+                            id: note.id,
+                            title: _titleController.text,
+                            content: _contentController.text,
+                            transcript: _transcriptController.text,
+                          );
+                          ToastUtils.showSuccess(context, 'Changes saved successfully');
+                        } else {
+                          _titleController.text = note.title;
+                          _contentController.text = note.content.isNotEmpty 
+                              ? note.content 
+                              : _compileNoteText(note);
+                          _transcriptController.text = note.transcript;
+                        }
+                        setState(() => _isEditing = !_isEditing);
+                      },
+                    ),
+                    const Gap(24),
+                    if (_selectedTab == 0) 
+                      _isEditing 
+                        ? TextField(
+                            controller: _contentController,
+                            maxLines: null,
+                            style: TextStyle(fontSize: 16, color: isDark ? Colors.white : Colors.black87, height: 1.5),
+                            decoration: const InputDecoration(
+                              border: InputBorder.none,
+                              hintText: 'Start writing your note...',
+                            ),
+                          )
+                        : _StructuredNoteContent(note: note)
+                    else if (_selectedTab == 2)
+                      _CornellNotesContent(note: note)
+                    else
+                      _TranscriptContent(
+                        note: note,
+                        isEditing: _isEditing,
+                        controller: _transcriptController,
+                        onEditToggle: () => setState(() => _isEditing = !_isEditing),
+                      ),
+                    const Gap(80), // Space for bottom toggle
+                  ],
                 ),
-                const Gap(24),
-                _NoteToolsHeader(
-                  note: note,
-                  isEditing: _isEditing,
-                  selectedTab: _selectedTab,
-                  titleController: _titleController,
-                  onNoteTools: () => _showNoteTools(context),
-                  onEditToggle: () {
-                    if (_isEditing) {
-                      // Save changes
-                      ref.read(notesControllerProvider.notifier).upsert(
-                        id: note.id,
-                        title: _titleController.text,
-                        content: _contentController.text,
-                        transcript: _transcriptController.text,
-                      );
-                      ToastUtils.showSuccess(context, 'Changes saved successfully');
-                    } else {
-                      _titleController.text = note.title;
-                      _contentController.text = note.content.isNotEmpty 
-                          ? note.content 
-                          : _compileNoteText(note);
-                      _transcriptController.text = note.transcript;
-                    }
-                    setState(() => _isEditing = !_isEditing);
-                  },
-                ),
-                const Gap(24),
-                if (_selectedTab == 0) 
-                  _isEditing 
-                    ? TextField(
-                        controller: _contentController,
-                        maxLines: null,
-                        style: TextStyle(fontSize: 16, color: isDark ? Colors.white : Colors.black87, height: 1.5),
-                        decoration: const InputDecoration(
-                          border: InputBorder.none,
-                          hintText: 'Start writing your note...',
-                        ),
-                      )
-                    : _StructuredNoteContent(note: note)
-                else
-                  _TranscriptContent(
-                    note: note,
-                    isEditing: _isEditing,
-                    controller: _transcriptController,
-                    onEditToggle: () => setState(() => _isEditing = !_isEditing),
-                  ),
-                const Gap(80), // Space for bottom toggle
-              ],
-            ),
+              ),
+            ],
           ),
+          if (_isTimerActive)
+            Positioned(
+              bottom: 16,
+              right: 16,
+              child: _FloatingTimerCard(
+                seconds: _timerSeconds,
+                isRunning: _isTimerRunning,
+                onPlayPause: _toggleTimer,
+                onReset: _resetTimer,
+                onClose: () => setState(() => _isTimerActive = false),
+              ),
+            ),
         ],
       ),
       bottomNavigationBar: _BottomToggleBar(
@@ -616,6 +649,11 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
             icon: Icons.lightbulb_outline,
             label: 'Identify Blind Spots',
             onTap: () => _handleAITool('Identify Blind Spots')
+          ),
+          _ToolOption(
+            icon: Icons.timer_outlined,
+            label: 'Focus Timer (Pomodoro)',
+            onTap: () => _handleAITool('Focus Timer')
           ),
             const Gap(24),
           ],
@@ -675,6 +713,153 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
     }
     
     return buffer.toString().trim();
+  }
+
+  void _showFocusTimerOptions() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        return Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: isDark ? AppTheme.darkSurface : Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Focus Session Duration', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const Gap(8),
+              Text('Select how long you want to focus studying this note.', style: TextStyle(color: Colors.grey[500])),
+              const Gap(24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _buildDurationOption(15, 'Quick Study'),
+                  _buildDurationOption(25, 'Pomodoro'),
+                  _buildDurationOption(50, 'Deep Focus'),
+                ],
+              ),
+              const Gap(32),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildDurationOption(int mins, String label) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return GestureDetector(
+      onTap: () {
+        Navigator.pop(context);
+        _startTimerSession(mins);
+      },
+      child: Container(
+        width: 100,
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        decoration: BoxDecoration(
+          color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[100],
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.blue.withOpacity(0.3)),
+        ),
+        child: Column(
+          children: [
+            Text('$mins', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.blue)),
+            const Gap(4),
+            Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _startTimerSession(int minutes) {
+    if (_studyTimer != null) {
+      _studyTimer!.cancel();
+    }
+    setState(() {
+      _selectedDurationMinutes = minutes;
+      _timerSeconds = minutes * 60;
+      _isTimerActive = true;
+      _isTimerRunning = true;
+    });
+
+    _studyTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_timerSeconds > 0) {
+        setState(() {
+          _timerSeconds--;
+        });
+      } else {
+        _studyTimer!.cancel();
+        setState(() {
+          _isTimerRunning = false;
+          _isTimerActive = false;
+        });
+        _showBreakDialog();
+      }
+    });
+  }
+
+  void _toggleTimer() {
+    if (_isTimerRunning) {
+      _studyTimer?.cancel();
+      setState(() {
+        _isTimerRunning = false;
+      });
+    } else {
+      setState(() {
+        _isTimerRunning = true;
+      });
+      _studyTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (_timerSeconds > 0) {
+          setState(() {
+            _timerSeconds--;
+          });
+        } else {
+          _studyTimer!.cancel();
+          setState(() {
+            _isTimerRunning = false;
+            _isTimerActive = false;
+          });
+          _showBreakDialog();
+        }
+      });
+    }
+  }
+
+  void _resetTimer() {
+    _studyTimer?.cancel();
+    setState(() {
+      _timerSeconds = _selectedDurationMinutes * 60;
+      _isTimerRunning = false;
+    });
+  }
+
+  void _showBreakDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Focus Session Completed! 🎉'),
+        content: const Text('Great job staying focused! Would you like to start a 5-minute break now?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Skip'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _startTimerSession(5); // Start a 5-minute break
+            },
+            child: const Text('Start Break'),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -1261,6 +1446,14 @@ class _BottomToggleBar extends StatelessWidget {
             ),
             Expanded(
               child: _ToggleButton(
+                label: 'Cornell Guide',
+                icon: Icons.school_outlined,
+                isSelected: selectedTab == 2,
+                onTap: () => onTabChanged(2),
+              ),
+            ),
+            Expanded(
+              child: _ToggleButton(
                 label: 'Transcript',
                 icon: Icons.mic_none,
                 isSelected: selectedTab == 1,
@@ -1760,6 +1953,314 @@ class _FlashcardItemState extends State<_FlashcardItem> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _CornellNotesContent extends StatelessWidget {
+  const _CornellNotesContent({required this.note});
+  final Note note;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cornell = note.cornellNotes;
+
+    if (cornell == null || cornell['cues'] == null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.school_outlined, size: 48, color: Colors.grey[400]),
+              const Gap(16),
+              const Text(
+                'No Cornell Study Guide Yet',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const Gap(8),
+              Text(
+                'To generate a structured Cornell study guide for this note, tap on AI Note Tools and select "Regenerate Summary".',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey[500], height: 1.4),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final List<dynamic> cuesList = cornell['cues'] ?? [];
+    final String bottomSummary = cornell['summary'] ?? '';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Cornell Notes System',
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+        ),
+        const Gap(8),
+        Text(
+          'Active study format mapping key cues & questions to detailed lecture points.',
+          style: TextStyle(color: Colors.grey[500], fontSize: 14),
+        ),
+        const Gap(24),
+        
+        // Cornell Notes Sheet Structure
+        Container(
+          decoration: BoxDecoration(
+            color: isDark ? AppTheme.darkSurface : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: isDark ? Colors.white10 : Colors.black.withOpacity(0.08)),
+          ),
+          child: Column(
+            children: [
+              // Two-Column Grid Header
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.white.withOpacity(0.02) : Colors.grey[50],
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                  border: Border(bottom: BorderSide(color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05))),
+                ),
+                child: const Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: Text(
+                        'CUES & QUESTIONS',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: Colors.blue, letterSpacing: 1),
+                      ),
+                    ),
+                    Expanded(
+                      flex: 7,
+                      child: Padding(
+                        padding: EdgeInsets.only(left: 12),
+                        child: Text(
+                          'LECTURE NOTES',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: Colors.blue, letterSpacing: 1),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              
+              // Cues & Notes Rows
+              ...cuesList.map((item) {
+                final String cue = item['cue'] ?? '';
+                final List<dynamic> notes = item['notes'] ?? [];
+
+                return IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Cues Column
+                      Expanded(
+                        flex: 3,
+                        child: Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: isDark ? Colors.white.withOpacity(0.01) : Colors.grey[50]?.withOpacity(0.3),
+                            border: Border(
+                              right: BorderSide(color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05)),
+                              bottom: BorderSide(color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05)),
+                            ),
+                          ),
+                          child: Text(
+                            cue,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: isDark ? Colors.white : Colors.black87,
+                            ),
+                          ),
+                        ),
+                      ),
+                      
+                      // Notes Column
+                      Expanded(
+                        flex: 7,
+                        child: Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            border: Border(
+                              bottom: BorderSide(color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05)),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: notes.map((noteText) {
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Padding(
+                                      padding: EdgeInsets.only(top: 6),
+                                      child: CircleAvatar(radius: 2.5, backgroundColor: Colors.blue),
+                                    ),
+                                    const Gap(8),
+                                    Expanded(
+                                      child: Text(
+                                        noteText.toString(),
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          height: 1.4,
+                                          color: isDark ? Colors.white70 : Colors.black87,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+
+              // Bottom Summary Section
+              if (bottomSummary.isNotEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.white.withOpacity(0.02) : Colors.grey[50]?.withOpacity(0.5),
+                    borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'SUMMARY',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: Colors.blue, letterSpacing: 1),
+                      ),
+                      const Gap(8),
+                      Text(
+                        bottomSummary,
+                        style: TextStyle(
+                          fontSize: 14,
+                          height: 1.5,
+                          fontStyle: FontStyle.italic,
+                          color: isDark ? Colors.white70 : Colors.black87,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FloatingTimerCard extends StatelessWidget {
+  const _FloatingTimerCard({
+    required this.seconds,
+    required this.isRunning,
+    required this.onPlayPause,
+    required this.onReset,
+    required this.onClose,
+  });
+
+  final int seconds;
+  final bool isRunning;
+  final VoidCallback onPlayPause;
+  final VoidCallback onReset;
+  final VoidCallback onClose;
+
+  String _formatTime(int totalSecs) {
+    final mins = totalSecs ~/ 60;
+    final secs = totalSecs % 60;
+    return '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    return Container(
+      width: 170,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: isDark ? AppTheme.darkSurface : Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.blue.withOpacity(0.4), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.15),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'FOCUS TIMER',
+                  style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: Colors.blue, letterSpacing: 0.8),
+                ),
+                const Gap(2),
+                Text(
+                  _formatTime(seconds),
+                  style: TextStyle(
+                    fontSize: 20, 
+                    fontWeight: FontWeight.w900, 
+                    color: isDark ? Colors.white : Colors.black87,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            icon: Icon(
+              isRunning ? Icons.pause_circle_filled : Icons.play_circle_filled,
+              color: Colors.blue,
+              size: 28,
+            ),
+            onPressed: onPlayPause,
+          ),
+          const Gap(4),
+          IconButton(
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            icon: const Icon(
+              Icons.replay,
+              color: Colors.grey,
+              size: 18,
+            ),
+            onPressed: onReset,
+          ),
+          const Gap(4),
+          IconButton(
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            icon: const Icon(
+              Icons.close,
+              color: Colors.grey,
+              size: 16,
+            ),
+            onPressed: onClose,
+          ),
+        ],
       ),
     );
   }
