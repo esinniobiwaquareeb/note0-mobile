@@ -100,7 +100,9 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
         final uploadsBase = authService.baseUrl.replaceFirst(RegExp(r'/v1/?$'), '');
         final audioFilename = (note.audioUrl != null && note.audioUrl!.isNotEmpty) ? note.audioUrl : note.audioPath;
         
-        final isYoutube = audioFilename != null && (audioFilename.contains('youtube.com') || audioFilename.contains('youtu.be'));
+        final isYoutube = audioFilename != null && 
+            audioFilename.startsWith('http') && 
+            (audioFilename.contains('youtube.com') || audioFilename.contains('youtu.be'));
         if (isYoutube) {
           showDialog(
             context: context,
@@ -174,7 +176,12 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
       final file = File("${output.path}/$sanitizedTitle.pdf");
       await file.writeAsBytes(await pdf.save());
 
-      await Share.shareXFiles([XFile(file.path)], text: 'Check out my note from Note0!');
+      final RenderBox? box = context.findRenderObject() as RenderBox?;
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text: 'Check out my note from Note0!',
+        sharePositionOrigin: box != null ? box.localToGlobal(Offset.zero) & box.size : null,
+      );
     } catch (e) {
       debugPrint('PDF Export error: $e');
       if (mounted) ToastUtils.showError(context, 'Failed to export PDF: $e');
@@ -398,7 +405,11 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
             ),
             TextButton(
               onPressed: () {
-                Share.share('$title\n\n$content');
+                final RenderBox? box = context.findRenderObject() as RenderBox?;
+                Share.share(
+                  '$title\n\n$content',
+                  sharePositionOrigin: box != null ? box.localToGlobal(Offset.zero) & box.size : null,
+                );
               },
               child: const Text('Share'),
             ),
@@ -423,16 +434,22 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
   }
 
   void _shareAudio(Note note) {
-    if (note.audioPath == null) {
+    final audioFilename = (note.audioUrl != null && note.audioUrl!.isNotEmpty) ? note.audioUrl : note.audioPath;
+    if (audioFilename == null || audioFilename.isEmpty) {
       ToastUtils.showError(context, 'No audio available to share.');
       return;
     }
     final authService = ref.read(authServiceProvider);
     final uploadsBase = authService.baseUrl.replaceFirst(RegExp(r'/v1/?$'), '');
-    final audioUrl = note.audioPath!.startsWith('/')
-        ? note.audioPath! // local file path
-        : '$uploadsBase/uploads/${note.audioPath}';
-    Share.share('Listen to my note: $audioUrl');
+    final audioUrl = audioFilename.startsWith('/')
+        ? audioFilename // local file path
+        : (audioFilename.startsWith('http') ? audioFilename : '$uploadsBase/uploads/$audioFilename');
+
+    final RenderBox? box = context.findRenderObject() as RenderBox?;
+    Share.share(
+      'Listen to my note: $audioUrl',
+      sharePositionOrigin: box != null ? box.localToGlobal(Offset.zero) & box.size : null,
+    );
   }
 
   @override
@@ -938,6 +955,15 @@ class _StructuredNoteContent extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (note.content.isNotEmpty) ...[
+          Text('Content', style: headingStyle),
+          const Gap(16),
+          Text(
+            note.content,
+            style: TextStyle(fontSize: 16, color: isDark ? Colors.white : AppTheme.darkBackground.withOpacity(0.8), height: 1.5),
+          ),
+          const Gap(40),
+        ],
         Text('Overview & Summary', style: headingStyle),
         const Gap(16),
         Text(

@@ -28,6 +28,8 @@ class _FlashcardsStudyScreenState extends State<FlashcardsStudyScreen> {
         _currentIndex++;
       });
       _pageController.nextPage(duration: const Duration(milliseconds: 400), curve: Curves.easeInOut);
+    } else {
+      Navigator.pop(context);
     }
   }
 
