@@ -18,7 +18,7 @@ class _AudioRecordingScreenState extends ConsumerState<AudioRecordingScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(recordingControllerProvider.notifier).start();
+      ref.read(recordingControllerProvider.notifier).reset();
     });
   }
 
@@ -86,31 +86,66 @@ class _AudioRecordingScreenState extends ConsumerState<AudioRecordingScreen> {
             style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold),
           ),
           const Gap(16),
-          const Text(
-            'Recording in progress...',
-            style: TextStyle(color: Colors.grey, fontSize: 16),
+          Text(
+            !recordingState.hasStarted
+                ? 'Ready to record'
+                : (recordingState.isPaused ? 'Recording paused' : 'Recording in progress...'),
+            style: const TextStyle(color: Colors.grey, fontSize: 16),
           ),
           const Spacer(),
           Padding(
             padding: const EdgeInsets.all(32.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _ActionButton(
-                  icon: Icons.delete_outline,
-                  label: 'Cancel',
-                  onTap: () => Navigator.pop(context),
-                  color: Colors.grey,
-                ),
-                _ActionButton(
-                  icon: Icons.stop,
-                  label: 'Finish',
-                  onTap: _stopRecording,
-                  color: Colors.red,
-                  isPrimary: true,
-                ),
-              ],
-            ),
+            child: !recordingState.hasStarted
+                ? Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _ActionButton(
+                        icon: Icons.close,
+                        label: 'Cancel',
+                        onTap: () => Navigator.pop(context),
+                        color: Colors.grey,
+                      ),
+                      _ActionButton(
+                        icon: Icons.play_arrow,
+                        label: 'Start',
+                        onTap: () => ref.read(recordingControllerProvider.notifier).start(),
+                        color: Colors.red,
+                        isPrimary: true,
+                      ),
+                    ],
+                  )
+                : Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _ActionButton(
+                        icon: Icons.delete_outline,
+                        label: 'Cancel',
+                        onTap: () => Navigator.pop(context),
+                        color: Colors.grey,
+                      ),
+                      if (recordingState.isPaused)
+                        _ActionButton(
+                          icon: Icons.play_arrow,
+                          label: 'Resume',
+                          onTap: () => ref.read(recordingControllerProvider.notifier).resume(),
+                          color: Colors.green,
+                        )
+                      else
+                        _ActionButton(
+                          icon: Icons.pause,
+                          label: 'Pause',
+                          onTap: () => ref.read(recordingControllerProvider.notifier).pause(),
+                          color: Colors.orange,
+                        ),
+                      _ActionButton(
+                        icon: Icons.stop,
+                        label: 'Finish',
+                        onTap: _stopRecording,
+                        color: Colors.red,
+                        isPrimary: true,
+                      ),
+                    ],
+                  ),
           ),
         ],
       ),

@@ -14,12 +14,16 @@ final recordingControllerProvider = StateNotifierProvider<RecordingController, R
 
 class RecordingState {
   final bool isRecording;
+  final bool isPaused;
+  final bool hasStarted;
   final Duration duration;
   final String? path;
   final double amplitude;
 
   RecordingState({
     this.isRecording = false,
+    this.isPaused = false,
+    this.hasStarted = false,
     this.duration = Duration.zero,
     this.path,
     this.amplitude = -160.0, // Minimum amplitude for record package
@@ -27,12 +31,16 @@ class RecordingState {
 
   RecordingState copyWith({
     bool? isRecording,
+    bool? isPaused,
+    bool? hasStarted,
     Duration? duration,
     String? path,
     double? amplitude,
   }) {
     return RecordingState(
       isRecording: isRecording ?? this.isRecording,
+      isPaused: isPaused ?? this.isPaused,
+      hasStarted: hasStarted ?? this.hasStarted,
       duration: duration ?? this.duration,
       path: path ?? this.path,
       amplitude: amplitude ?? this.amplitude,
@@ -47,6 +55,11 @@ class RecordingController extends StateNotifier<RecordingState> {
   final _uuid = const Uuid();
   Timer? _timer;
   Timer? _amplitudeTimer;
+
+  void reset() {
+    _stopTimers();
+    state = RecordingState();
+  }
 
   Future<void> start() async {
     final hasPermission = await _record.hasPermission();
@@ -88,22 +101,25 @@ class RecordingController extends StateNotifier<RecordingState> {
       final path = '${dir.path}/${_uuid.v4()}.m4a';
 
       await _record.start(const RecordConfig(), path: path);
-      state = state.copyWith(isRecording: true, path: path, duration: Duration.zero);
+      state = state.copyWith(
+        isRecording: true,
+        isPaused: false,
+        hasStarted: true,
+        path: path,
+        duration: Duration.zero,
+      );
       
       _startTimers();
     } catch (e) {
       debugPrint('RecordingController Error: $e');
       rethrow;
     }
-
-
   }
-
 
   void _startTimers() {
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      state = state.copyWith(duration: Duration(seconds: timer.tick));
+      state = state.copyWith(duration: state.duration + const Duration(seconds: 1));
     });
 
     _amplitudeTimer?.cancel();
@@ -124,10 +140,30 @@ class RecordingController extends StateNotifier<RecordingState> {
     _amplitudeTimer = null;
   }
 
+  Future<void> pause() async {
+    try {
+      await _record.pause();
+      _stopTimers();
+      state = state.copyWith(isRecording: false, isPaused: true);
+    } catch (e) {
+      debugPrint('RecordingController Pause Error: $e');
+    }
+  }
+
+  Future<void> resume() async {
+    try {
+      await _record.resume();
+      state = state.copyWith(isRecording: true, isPaused: false);
+      _startTimers();
+    } catch (e) {
+      debugPrint('RecordingController Resume Error: $e');
+    }
+  }
+
   Future<String?> stop() async {
     _stopTimers();
     final path = await _record.stop();
-    state = state.copyWith(isRecording: false);
+    state = state.copyWith(isRecording: false, isPaused: false, hasStarted: false);
     return path;
   }
 

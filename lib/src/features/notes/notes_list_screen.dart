@@ -46,7 +46,74 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
     super.dispose();
   }
 
-  Future<void> _scanDocument() async {
+  void _showScanSourceSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        return Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: isDark ? AppTheme.darkSurface : Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Scan Note',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const Gap(8),
+              Text(
+                'Select how you want to import your document.',
+                style: TextStyle(color: Colors.grey[500], fontSize: 14),
+              ),
+              const Gap(24),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.document_scanner, color: Colors.blue),
+                ),
+                title: const Text('Camera Document Scanner', style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('Scan document using camera (ML Kit)'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _runDocumentScanner();
+                },
+              ),
+              const Gap(12),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.image, color: Colors.green),
+                ),
+                title: const Text('Choose from Gallery', style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('Pick an existing document photo'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickImageFromGallery();
+                },
+              ),
+              const Gap(16),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _runDocumentScanner() async {
     final canProceed = await _checkLimitBeforeAction();
     if (!canProceed) return;
 
@@ -61,35 +128,60 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
       final result = await documentScanner.scanDocument();
       if (result.images != null && result.images!.isNotEmpty) {
         final path = result.images!.first;
-        _showSuccess('Document scanned. Analyzing in background...');
-        ref.read(notesControllerProvider.notifier).startScanProcessing(
-          path,
-          onComplete: (note) {
-            if (mounted) {
-              _showSuccessWithAction(
-                'Document analyzed: "${note.title}"',
-                'Open',
-                () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => NotesEditorScreen(noteId: note.id),
-                    ),
-                  );
-                },
-              );
-            }
-          },
-          onError: (err) {
-            if (mounted) {
-              _showError('Document analysis failed: $err');
-            }
-          },
-        );
+        _processScannedImage(path);
       }
     } catch (e) {
       if (e.toString().contains('cancelled')) return;
-      _showError('Scanning failed: $e');
+      _showError('Camera scanner not supported on this device. Trying Gallery...');
+      _pickImageFromGallery();
     }
+  }
+
+  Future<void> _pickImageFromGallery() async {
+    final canProceed = await _checkLimitBeforeAction();
+    if (!canProceed) return;
+
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+      );
+      if (result != null && result.files.single.path != null) {
+        _processScannedImage(result.files.single.path!);
+      }
+    } catch (e) {
+      _showError('Failed to pick image: $e');
+    }
+  }
+
+  void _processScannedImage(String path) {
+    _showSuccess('Document selected. Analyzing in background...');
+    ref.read(notesControllerProvider.notifier).startScanProcessing(
+      path,
+      onComplete: (note) {
+        if (mounted) {
+          _showSuccessWithAction(
+            'Document analyzed: "${note.title}"',
+            'Open',
+            () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => NotesEditorScreen(noteId: note.id),
+                ),
+              );
+            },
+          );
+        }
+      },
+      onError: (err) {
+        if (mounted) {
+          _showError('Document analysis failed: $err');
+        }
+      },
+    );
+  }
+
+  Future<void> _scanDocument() async {
+    _showScanSourceSheet();
   }
 
   @override
