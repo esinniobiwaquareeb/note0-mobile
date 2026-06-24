@@ -1129,8 +1129,8 @@ class _MoveToFolderSheet extends ConsumerWidget {
                       trailing: note.folderId == null ? const Icon(Icons.check, color: Colors.blue) : null,
                       onTap: () {
                         ref.read(notesControllerProvider.notifier).moveToFolder(note.id, null);
-                        Navigator.pop(context);
                         ToastUtils.showSuccess(context, 'Note removed from folder');
+                        Navigator.pop(context);
                       },
                     ),
                     ...folders.map((folder) => ListTile(
@@ -1139,8 +1139,8 @@ class _MoveToFolderSheet extends ConsumerWidget {
                           trailing: note.folderId == folder.id ? const Icon(Icons.check, color: Colors.blue) : null,
                           onTap: () {
                             ref.read(notesControllerProvider.notifier).moveToFolder(note.id, folder.id);
-                            Navigator.pop(context);
                             ToastUtils.showSuccess(context, 'Note moved to ${folder.name}');
+                            Navigator.pop(context);
                           },
                         )),
                   ],

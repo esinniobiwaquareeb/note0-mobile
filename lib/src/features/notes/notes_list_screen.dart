@@ -59,7 +59,7 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
       );
 
       final result = await documentScanner.scanDocument();
-      if (result.images!.isNotEmpty) {
+      if (result.images != null && result.images!.isNotEmpty) {
         final path = result.images!.first;
         _showSuccess('Document scanned. Analyzing in background...');
         ref.read(notesControllerProvider.notifier).startScanProcessing(
@@ -390,13 +390,12 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _NewNoteSheet(
+      builder: (_) => _NewNoteSheet(
         onRecord: _startRecording,
         onUpload: _uploadFile,
-        onYouTube: () => _processYouTube(context),
+        onYouTube: _processYouTube,
         onScan: _scanDocument,
       ),
-
     );
   }
 
@@ -592,13 +591,13 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
     }
   }
 
-  Future<void> _processYouTube(BuildContext context) async {
+  Future<void> _processYouTube() async {
     final canProceed = await _checkLimitBeforeAction();
     if (!canProceed) return;
 
     final result = await showDialog<String?>(
       context: context,
-      builder: (context) => const YouTubeProcessingDialog(),
+      builder: (_) => const YouTubeProcessingDialog(),
     );
     if (result != null && mounted) {
       _showSuccess('Video integrated. Analyzing in background...');
@@ -1471,11 +1470,11 @@ class _MoveToFolderSheetInList extends ConsumerWidget {
                         ref
                             .read(notesControllerProvider.notifier)
                             .moveToFolder(note.id, null);
-                        Navigator.pop(context);
                         ToastUtils.showSuccess(
                           context,
                           'Note removed from folder',
                         );
+                        Navigator.pop(context);
                       },
                     ),
                     ...folders.map(
@@ -1495,11 +1494,11 @@ class _MoveToFolderSheetInList extends ConsumerWidget {
                           ref
                               .read(notesControllerProvider.notifier)
                               .moveToFolder(note.id, folder.id);
-                          Navigator.pop(context);
                           ToastUtils.showSuccess(
                             context,
                             'Note moved to ${folder.name}',
                           );
+                          Navigator.pop(context);
                         },
                       ),
                     ),
