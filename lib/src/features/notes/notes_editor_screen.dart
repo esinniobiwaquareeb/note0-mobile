@@ -113,11 +113,27 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
           );
           final ytClient = yt.YoutubeExplode();
           try {
-            final manifest = await ytClient.videos.streams.getManifest(audioFilename);
-            final audioStream = manifest.audioOnly.withHighestBitrate();
-            final directAudioUrl = audioStream.url.toString();
+            final tempDir = await getTemporaryDirectory();
+            final localFile = File('${tempDir.path}/${note.id}.mp3');
+            
+            if (!localFile.existsSync()) {
+              final manifest = await ytClient.videos.streams.getManifest(audioFilename);
+              final audioStream = manifest.audioOnly.withHighestBitrate();
+              final directAudioUrl = audioStream.url.toString();
+              
+              final client = http.Client();
+              final response = await client.send(http.Request('GET', Uri.parse(directAudioUrl)));
+              
+              final fileStream = localFile.openWrite();
+              await response.stream.forEach((chunk) {
+                fileStream.add(chunk);
+              });
+              await fileStream.close();
+              client.close();
+            }
+            
             if (mounted) Navigator.pop(context); // close loader
-            await _audioPlayer.play(UrlSource(directAudioUrl));
+            await _audioPlayer.play(DeviceFileSource(localFile.path));
           } catch (e) {
             if (mounted) Navigator.pop(context); // close loader
             rethrow;
@@ -519,7 +535,9 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
                       ToastUtils.showSuccess(context, 'Changes saved successfully');
                     } else {
                       _titleController.text = note.title;
-                      _contentController.text = note.content;
+                      _contentController.text = note.content.isNotEmpty 
+                          ? note.content 
+                          : _compileNoteText(note);
                       _transcriptController.text = note.transcript;
                     }
                     setState(() => _isEditing = !_isEditing);
@@ -531,10 +549,18 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
                     ? TextField(
                         controller: _contentController,
                         maxLines: null,
-                        style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-                        decoration: const InputDecoration(border: InputBorder.none),
+                        style: TextStyle(fontSize: 16, color: isDark ? Colors.white : Colors.black87, height: 1.5),
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          hintText: 'Start writing your note...',
+                        ),
                       )
-                    : _StructuredNoteContent(note: note)
+                    : (note.content.isNotEmpty 
+                        ? Text(
+                            note.content,
+                            style: TextStyle(fontSize: 16, color: isDark ? Colors.white : AppTheme.darkBackground.withOpacity(0.8), height: 1.5),
+                          )
+                        : _StructuredNoteContent(note: note))
                 else
                   _TranscriptContent(
                     note: note,
@@ -613,8 +639,47 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
         note: note,
         onExportPdf: () => _exportToPdf(note),
       ),
-
     );
+  }
+
+  String _compileNoteText(Note note) {
+    final buffer = StringBuffer();
+    
+    if (note.summary.isNotEmpty) {
+      buffer.writeln('Overview & Summary');
+      buffer.writeln(note.summary);
+      buffer.writeln();
+    }
+    
+    if (note.keyConcepts.isNotEmpty) {
+      buffer.writeln('Key Concepts & Definitions');
+      for (var concept in note.keyConcepts) {
+        final title = concept['title'] ?? '';
+        final desc = concept['description'] ?? '';
+        buffer.writeln('- $title: $desc');
+      }
+      buffer.writeln();
+    }
+    
+    if (note.commonQuestions.isNotEmpty) {
+      buffer.writeln('Common Questions Addressed');
+      for (var q in note.commonQuestions) {
+        final question = q['question'] ?? '';
+        final ans = q['explanation'] ?? q['answer'] ?? '';
+        buffer.writeln('Q: $question');
+        buffer.writeln('A: $ans');
+        buffer.writeln();
+      }
+    }
+    
+    if (note.finalThoughts.isNotEmpty) {
+      buffer.writeln('Final Thoughts');
+      for (var thought in note.finalThoughts) {
+        buffer.writeln('- $thought');
+      }
+    }
+    
+    return buffer.toString().trim();
   }
 }
 
