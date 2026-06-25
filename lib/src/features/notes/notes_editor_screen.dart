@@ -41,6 +41,7 @@ class NotesEditorScreen extends ConsumerStatefulWidget {
 class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
   int _selectedTab = 0; // 0 for Note, 1 for Transcript, 2 for Cornell
   bool _isEditing = false;
+  bool _controllersInitialized = false;
   late TextEditingController _titleController;
   late TextEditingController _contentController;
   late TextEditingController _transcriptController;
@@ -239,6 +240,16 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
     Navigator.pop(context); // Close sheet
     final note = ref.read(notesControllerProvider).asData?.value.firstWhereOrNull((n) => n.id == widget.noteId);
     if (note == null) return;
+
+    if (tool == 'Cornell Guide') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => CornellGuideScreen(note: note),
+        ),
+      );
+      return;
+    }
 
     if (tool == 'Chat') {
       Navigator.push(context, MaterialPageRoute(builder: (_) => AIChatScreen(note: note)));
@@ -489,12 +500,26 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
     final notes = notesAsync.asData?.value ?? const [];
     final note = notes.firstWhereOrNull((n) => n.id == widget.noteId);
 
-
     if (note == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
+    if (!_controllersInitialized) {
+      _titleController.text = note.title;
+      _contentController.text = note.content.isNotEmpty 
+          ? note.content 
+          : _compileNoteText(note);
+      _transcriptController.text = note.transcript;
+      _controllersInitialized = true;
+      if (note.title.isEmpty && note.content.isEmpty && note.transcript.isEmpty) {
+        _isEditing = true;
+      }
+    }
+
     final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final hasAudio = (note.audioUrl != null && note.audioUrl!.isNotEmpty) ||
+                     (note.audioPath != null && note.audioPath!.isNotEmpty);
 
     return Scaffold(
       backgroundColor: isDark ? AppTheme.darkBackground : AppTheme.lightBackground,
@@ -523,16 +548,18 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   children: [
                     const Gap(16),
-                    _AudioPlayerCard(
-                      isPlaying: _isPlaying,
-                      duration: _duration,
-                      position: _position,
-                      speed: _playbackSpeed,
-                      onTogglePlay: () => _togglePlayback(note),
-                      onSeekRelative: _seekRelative,
-                      onSpeedToggle: _cycleSpeed,
-                      onDownload: () => _shareAudio(note),
-                    ),
+                    if (hasAudio) ...[
+                      _AudioPlayerCard(
+                        isPlaying: _isPlaying,
+                        duration: _duration,
+                        position: _position,
+                        speed: _playbackSpeed,
+                        onTogglePlay: () => _togglePlayback(note),
+                        onSeekRelative: _seekRelative,
+                        onSpeedToggle: _cycleSpeed,
+                        onDownload: () => _shareAudio(note),
+                      ),
+                    ],
                     const Gap(24),
                     _NoteToolsHeader(
                       note: note,
@@ -625,6 +652,11 @@ class _NotesEditorScreenState extends ConsumerState<NotesEditorScreen> {
           children: [
             const Text('AI Note Tools', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const Gap(16),
+            _ToolOption(
+              icon: Icons.school_outlined,
+              label: 'Cornell Study Guide',
+              onTap: () => _handleAITool('Cornell Guide')
+            ),
             _ToolOption(
               icon: Icons.chat_bubble_outline,
               label: 'Chat with Note',
@@ -1446,14 +1478,6 @@ class _BottomToggleBar extends StatelessWidget {
             ),
             Expanded(
               child: _ToggleButton(
-                label: 'Cornell Guide',
-                icon: Icons.school_outlined,
-                isSelected: selectedTab == 2,
-                onTap: () => onTabChanged(2),
-              ),
-            ),
-            Expanded(
-              child: _ToggleButton(
                 label: 'Transcript',
                 icon: Icons.mic_none,
                 isSelected: selectedTab == 1,
@@ -2261,6 +2285,33 @@ class _FloatingTimerCard extends StatelessWidget {
             onPressed: onClose,
           ),
         ],
+      ),
+    );
+  }
+}
+
+class CornellGuideScreen extends StatelessWidget {
+  const CornellGuideScreen({super.key, required this.note});
+  final Note note;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Scaffold(
+      backgroundColor: isDark ? AppTheme.darkBackground : AppTheme.lightBackground,
+      appBar: AppBar(
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back_ios_new, size: 20, color: isDark ? Colors.white : Colors.black87),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          'Cornell Study Guide',
+          style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+        ),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: _CornellNotesContent(note: note),
       ),
     );
   }

@@ -21,6 +21,7 @@ import '../onboarding/user_guide_overlay.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/note.dart';
 import 'package:google_mlkit_document_scanner/google_mlkit_document_scanner.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 
 
@@ -116,6 +117,12 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
   Future<void> _runDocumentScanner() async {
     final canProceed = await _checkLimitBeforeAction();
     if (!canProceed) return;
+
+    final status = await Permission.camera.request();
+    if (status != PermissionStatus.granted) {
+      _showError('Camera permission is required to scan notes');
+      return;
+    }
 
     try {
       final documentScanner = DocumentScanner(
@@ -487,6 +494,18 @@ class _NotesListScreenState extends ConsumerState<NotesListScreen> {
         onUpload: _uploadFile,
         onYouTube: _processYouTube,
         onScan: _scanDocument,
+        onWriteNote: _createNewBlankNote,
+      ),
+    );
+  }
+
+  Future<void> _createNewBlankNote() async {
+    final note = await ref.read(notesControllerProvider.notifier).createEmpty();
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => NotesEditorScreen(noteId: note.id),
       ),
     );
   }
@@ -1368,12 +1387,14 @@ class _NewNoteSheet extends StatelessWidget {
     required this.onUpload,
     required this.onYouTube,
     required this.onScan,
+    required this.onWriteNote,
   });
 
   final VoidCallback onRecord;
   final VoidCallback onUpload;
   final VoidCallback onYouTube;
   final VoidCallback onScan;
+  final VoidCallback onWriteNote;
 
 
   @override
@@ -1400,6 +1421,18 @@ class _NewNoteSheet extends StatelessWidget {
             ),
           ),
           const Gap(24),
+          _NewNoteOption(
+            icon: Icons.edit_outlined,
+            iconColor: Colors.teal,
+            iconBg: Colors.teal.withOpacity(0.1),
+            title: 'Write Note',
+            subtitle: 'Type or write a blank note',
+            onTap: () {
+              Navigator.pop(context);
+              onWriteNote();
+            },
+          ),
+          const Gap(16),
           _NewNoteOption(
             icon: Icons.document_scanner_outlined,
             iconColor: Colors.purple,

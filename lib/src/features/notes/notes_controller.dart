@@ -304,18 +304,42 @@ class NotesController extends AsyncNotifier<List<Note>> {
 
 
   Future<Note> createEmpty() async {
-
+    final tempId = _uuid.v4();
     final now = DateTime.now();
-    final note = Note(
-      id: _uuid.v4(),
+    final localNote = Note(
+      id: tempId,
       title: '',
       content: '',
       createdAt: now,
       updatedAt: now,
     );
-    await ref.read(notesRepositoryProvider).upsert(note);
+
+    await ref.read(notesRepositoryProvider).upsert(localNote);
     state = AsyncData(await ref.read(notesRepositoryProvider).list());
-    return note;
+
+    try {
+      final guestId = await ref.read(usageServiceProvider).getGuestId();
+      final headers = await ref.read(authServiceProvider).getAuthHeaders(json: true);
+      headers['x-guest-id'] = guestId;
+      final response = await http.post(
+        Uri.parse('$_baseUrl/notes'),
+        headers: headers,
+        body: jsonEncode({}),
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        final noteJson = jsonDecode(response.body);
+        final backendNote = Note.fromJson(noteJson);
+        await ref.read(notesRepositoryProvider).deleteById(tempId);
+        await ref.read(notesRepositoryProvider).upsert(backendNote);
+        final list = await fetchNotes();
+        state = AsyncData(list);
+        return backendNote;
+      }
+    } catch (_) {
+      // Fallback to local
+    }
+    return localNote;
   }
 
   Future<void> upsert({
